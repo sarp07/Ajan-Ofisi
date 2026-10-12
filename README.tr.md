@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/tr/ofis.png" width="860" alt="Ajan Ofisi: Claude Code ekibin için canlı ofis">
+  <img src="docs/tr/ofis.png" width="860" alt="Ajan Ofisi: yapay zekâ ekibin için canlı ofis">
 </p>
 
 <h1 align="center">Ajan Ofisi</h1>
 
 <p align="center">
-  Claude Code ekibin için canlı bir ofis. Çalışanlarına isim ver, görev ve skill tanımla,<br>
-  şefle konuş ve işin yapılışını izle. macOS, Windows ve Linux için.
+  Claude Code ya da OpenAI Codex ekibin için canlı bir ofis. Beyninle konuş, projelerine kat aç,<br>
+  şefler ve ekipler işi yapsın, sen izle. macOS, Windows ve Linux için.
 </p>
 
 <p align="center">
@@ -21,16 +21,20 @@
 
 ## Özellikler
 
-- 🧠 **Beyin:** tek muhatabın. Bedeni yok, ona istediğin adı verirsin. Projelerin için katlar açar, her kata bir şef ve ekip önerir, kat şefleriyle konuşur ve sana tek bir rapor verir. İstersen cevaplarını sesli okur (bilgisayar sesi, ElevenLabs ya da OpenAI).
+- 🧠 **Beyin:** tek muhatabın. Bedeni yok, ona istediğin adı verirsin. Projelerin için katlar açar, her kata bir şef ve ekip önerir, kat şefleriyle konuşur ve sana tek bir rapor verir. Şef işi bitirince, soru sorunca ya da onay bekleyince beyne kendiliğinden haber gider, beyin katları yoklamaz. Cevaplarını sesli okur (bilgisayar sesi, ElevenLabs ya da OpenAI), sen de mikrofon düğmesiyle konuşarak yazarsın.
 - ⚙️ **Claude ya da OpenAI:** ekip Claude Code ya da OpenAI Codex ile çalışır. Uygulama kurulu ve giriş yapılmış olanı kendisi bulur, istersen Ayarlar'dan değiştirirsin. Abonelikle giriş ya da şifreli saklanan API anahtarı.
 - 🏢 **Katlar:** her proje bir kat, her katın kendi şefi ve ekibi var. Katlar aynı anda çalışır. Kat şefleri güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar.
 - 💬 **Konuşma paneli:** şefin cevapları, sana sorduğu sorular ve onay istekleri tek yerde toplanır. Terminali takip etmen gerekmez, cevabını panelden yazarsın.
 - 🫶 **Kişisel kat:** şefi beyindir. Sağlık danışmanı, iş koçu, reklamcı, tasarımcı, yazılımcı gibi istediğin kişileri seçersin, her birinin ayrı odası olur. Odalarda bire bir, özel konuşursun. PDF ve resim eklersin, konuşmayı PDF ya da Markdown olarak indirirsin.
-- 🌐 **Tarayıcı odası:** WhatsApp Web, Telegram, Gmail, LinkedIn ve diğer hesapların uygulamanın içinde kendi kalıcı profillerinde açılır. Girişi bir kez sen yaparsın, şifreni uygulama görmez. Ekip bu hesapları kullanırken tıklama ve yazma her seferinde senin onayına gelir.
-- 📱 **Test alanları:** projenin test adresi için Test sekmesi, iOS simülatörü ve Android emülatörü araçları. Ajanlar konsol hatalarını da okur.
+- 🌐 **Tarayıcı odası:** WhatsApp Web, Telegram, Gmail, LinkedIn ve diğer hesapların uygulamanın içinde kendi kalıcı profillerinde açılır. Girişi bir kez sen yaparsın, şifreni uygulama görmez. Ekip bu hesapları kullanırken tıklama ve yazma senin onayına gelir, istersen Ayarlar'dan kapatırsın.
+- 📲 **WhatsApp ile beyin:** uygulama WhatsApp Web'i yapay zekâ kullanmadan kendisi izler, jeton harcamaz. Senin numarandan gelen yeni mesaj beyne düşer, beyin cevabını gönderir. Başkasına yazmadan önce senden onay alır.
+- 📱 **Test alanı:** Mac'te iOS simülatörleri, kurulu olduğunda her sistemde Android cihaz ve emülatörleri. Cihazı açar, ekranına bakar ya da testi şefe verirsin. Web testleri için projenin test adresi tarayıcıda açılır, ajanlar konsol hatalarını da okur.
 - 🐙 **Geliştirici dostu:** yeni katı var olan klasörden, sıfırdan (git ve GitHub reposuyla) ya da GitHub'dan klonlayarak açarsın. Her proje kartında dal, değişiklik, açık PR'lar; pull, commit, push ve yeni dal tek tık. Tarayıcıda iPhone, iPad, Android modları ve hata konsolu.
 - 📒 **Kayıt defteri:** her katta ne istendiği, kimin ne teslim ettiği ve hangi görevin açık kaldığı yazılır. Yeni oturum kısa bir "kaldığın yer" notuyla başlar.
-- ✨ **Skiller, kurallar ve eğitim:** hazır skiller, kendi skillerin, şirket kuralları ve çalışana verdiğin geri bildirimin kalıcı kurala dönüşmesi.
+- ✨ **Skiller, kurallar ve eğitim:** hazır skiller, kendi skillerin, şirket kuralları ve çalışana verdiğin geri bildirimin kalıcı kurala dönüşmesi. Açık olan bütün skiller her ajanın kullanımındadır.
+- 🔐 **İzin modları:** her adımı soran, düzenlemeleri kendisi kabul eden, otomatik, plan ve hiçbir şey sormayan tam yetki modu. Ayarlar'dan seçersin.
+- 🪟 **Esnek düzen:** bölümlerin arasındaki çizgileri sürükleyerek boyutlandırırsın, çift tıklayınca varsayılana döner.
+- ⬆️ **Uygulama içi güncelleme:** yeni sürüm çıkınca uygulama haber verir, tek tıkla indirip yeniden başlatınca kurar. İnternet koparsa haber verir, beklerken küçük bir koşu oyunu oynarsın.
 - 💾 **Yedek:** şirketin tamamını tek dosyaya yedekler, başka bilgisayarda geri yüklersin.
 - 🔔 **Bildirimler ve izinler:** iş bitince ya da onay gerekince bildirim gelir. macOS izinleri ilk açılışta tek adımda istenir.
 - 🌍 **Türkçe ve İngilizce.**
@@ -46,7 +50,12 @@
 
 ## Kurulum
 
-Gereksinimler: [Claude Code](https://code.claude.com/docs/en/setup) ve Claude Code içeren bir hesap (Pro, Max, Team, Enterprise ya da Console). Claude Code kurulu değilse uygulama ilk açılışta kurulum komutunu gösterir.
+Gereksinimler: şunlardan biri yeterli.
+
+- [Claude Code](https://code.claude.com/docs/en/setup) ve Claude Code içeren bir hesap (Pro, Max, Team, Enterprise) ya da Anthropic API anahtarı.
+- [OpenAI Codex](https://developers.openai.com/codex) ve ChatGPT hesabı ya da OpenAI API anahtarı.
+
+Hiçbiri kurulu değilse uygulama ilk açılışta kurulum komutunu gösterir.
 
 ### Yöntem 1: İndir (en kolayı)
 
@@ -76,23 +85,25 @@ Terminal kullanmak istemiyorsan macOS'ta `Ac.command`, Windows'ta `Ac.bat` dosya
 
 ## İlk açılış
 
-1. Ofisine ve şefine isim ver, dili seç.
-2. İlk çalışanları hazır kişilerden seç ya da **Şimdilik geç** de, sonra **Ekip** sayfasından eklersin.
-3. Skilleri seç ya da geç.
-4. **Projeler** sayfasından proje klasörünü ekle, **Ofis** sayfasında **Başlat**'a bas.
-5. Claude Code ilk seferde hesabına giriş yapmanı ve klasöre güvenmeni ister. İkisi de pencerenin altındaki terminalde olur.
+1. **Motor:** Claude Code ya da Codex. Uygulama kurulu ve giriş yapılmış olanı kendisi bulur. Abonelikle giriş ya da API anahtarı.
+2. **Ses:** beynin sesi. Bilgisayar sesi, ElevenLabs, OpenAI ya da sessiz.
+3. **Beyin:** beynine isim ver.
+4. **Odalar:** kişisel katta olmasını istediğin kişileri seç ya da geç.
+5. **İzinler:** macOS'ta klasör izinleri tek seferde verilir, bildirimleri denersin.
+
+Sonra beyinle konuş: proje klasörünü göster, sıfırdan aç ya da GitHub'dan klonlat. Kat, şef ve ekip kurulur. Kat açmayı **Projeler** sayfasından kendin de yapabilirsin. Dil başta Türkçedir, değiştirmediğin sürece Türkçe kalır.
 
 ## Nasıl çalışır
 
-Ajan Ofisi, Claude Code'u uygulamanın içinde çalıştırır. Her oturum açılışında şirketin (ekip, kurallar, skiller) bir Claude Code eklentisine derlenir ve Claude Code gömülü terminalde bu eklentiyle başlar. Ofis, Claude Code'un kendi olaylarını bu bilgisayarda dinler ve gerçekte ne oluyorsa onu çizer.
+Ajan Ofisi, Claude Code ya da Codex'i uygulamanın içinde çalıştırır. Her oturum açılışında şirketin (ekip, kurallar, skiller) motora uygun biçimde derlenir ve motor gömülü terminalde bununla başlar. Beyin ve şefler katları, tarayıcıyı ve test cihazlarını bu bilgisayardaki yerel bir MCP sunucusunun araçlarıyla kullanır. Ofis, motorun kendi olaylarını dinler ve gerçekte ne oluyorsa onu çizer.
 
 ## Gizlilik ve güvenlik
 
-- Uygulama Claude şifreni ya da anahtarını **görmez ve saklamaz**. Giriş, Claude Code'un kendi giriş adımıyla yapılır.
+- Abonelikle girişte uygulama şifreni **görmez ve saklamaz**. Giriş, Claude Code'un ya da Codex'in kendi giriş adımıyla yapılır.
 - Canlı olaylar yalnızca bu bilgisayarda (`127.0.0.1`), her açılışta değişen gizli bir anahtarla alınır. Dışarıya açık kapı yoktur.
 - Projelerine ve `~/.claude` klasörüne hiçbir şey yazılmaz. Bütün veri uygulamanın kendi veri klasöründe durur.
 - Uygulama şifre istemez ve tutmaz. Her bağlı hesabın tarayıcı oturumu kendi profilinde durur, API anahtarları sistemin şifreli deposunda saklanır.
-- Bütün izinleri atlayan çalışma modu kabul edilmez. Başlangıç kuralları canlı veritabanına yazmayı, yayına almayı, ödeme ve cüzdan işlemlerini senin onayına bağlar.
+- Hiçbir şey sormayan tam yetki modu yalnızca sen Ayarlar'dan açarsan çalışır ve açarken uyarı gösterilir. Başlangıç kuralları canlı veritabanına yazmayı, yayına almayı, ödeme ve cüzdan işlemlerini senin onayına bağlar.
 - Skiller kendi depolarından, sabit bir sürüme bağlı olarak indirilir.
 
 ## Bilmen gerekenler
@@ -124,7 +135,7 @@ npm run paket:linux   # AppImage ve deb
 | Klasör | İçerik |
 | --- | --- |
 | `main.js`, `preload.cjs` | Electron ana süreci ve arayüz köprüsü |
-| `cekirdek/` | Şirket deposu, eklenti derleyici, durum motoru, kayıt defteri, skill yöneticisi |
+| `cekirdek/` | Şirket deposu, eklenti derleyici, motorlar, beyin ve MCP araçları, tarayıcı odası, test alanı, durum motoru, kayıt defteri, skill yöneticisi, güncelleme |
 | `arayuz/` | Ofis sahnesi ve sayfalar (çatı ya da paketleyici yok) |
 | `katalog/` | Hazır skill listesi |
 

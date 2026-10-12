@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/en/ofis.png" width="860" alt="Ajan Ofisi: a live office for your Claude Code team">
+  <img src="docs/en/ofis.png" width="860" alt="Ajan Ofisi: a live office for your AI team">
 </p>
 
 <h1 align="center">Ajan Ofisi</h1>
 
 <p align="center">
-  A live office for your Claude Code team. Name your agents, give them jobs and skills,<br>
-  talk to the chief and watch the work happen. For macOS, Windows and Linux.
+  A live office for your Claude Code or OpenAI Codex team. Talk to your brain, open a floor per project,<br>
+  let chiefs and teams do the work and watch it happen. For macOS, Windows and Linux.
 </p>
 
 <p align="center">
@@ -21,16 +21,20 @@
 
 ## Features
 
-- 🧠 **The brain:** your single contact. It has no body and you give it any name. It opens a floor for each project, proposes a chief and a team for every floor, talks to the floor chiefs and gives you one report. It can read its answers aloud (computer voice, ElevenLabs or OpenAI).
+- 🧠 **The brain:** your single contact. It has no body and you give it any name. It opens a floor for each project, proposes a chief and a team for every floor, talks to the floor chiefs and gives you one report. When a chief finishes, asks a question or waits for approval, the brain hears about it automatically, so it never polls the floors. It reads its answers aloud (computer voice, ElevenLabs or OpenAI), and you can talk to type with the microphone button.
 - ⚙️ **Claude or OpenAI:** the team runs on Claude Code or OpenAI Codex. The app finds what is installed and signed in, and you can change it in Settings. Subscription sign in or an encrypted API key.
 - 🏢 **Floors:** every project is a floor with its own chief and team. Floors run at the same time. Chiefs coordinate on a strong model, team members work on a model that uses less.
 - 💬 **Chat panel:** the chief's answers, questions and approval requests land in one place. No need to watch the terminal; answer from the panel.
 - 🫶 **Personal floor:** its chief is the brain. Pick the people you want, like a health advisor, business coach, advertiser, designer or developer, and each gets a room. Talk one to one in private, attach PDFs and images, and export the chat as PDF or Markdown.
-- 🌐 **Browser room:** WhatsApp Web, Telegram, Gmail, LinkedIn and other accounts open inside the app in their own persistent profiles. You sign in once and the app never sees your password. When the team uses these accounts, every click and typing comes to you for approval.
-- 📱 **Test areas:** a Test tab for the project's test address, plus iOS Simulator and Android emulator tools. Agents read console errors too.
+- 🌐 **Browser room:** WhatsApp Web, Telegram, Gmail, LinkedIn and other accounts open inside the app in their own persistent profiles. You sign in once and the app never sees your password. When the team uses these accounts, clicks and typing come to you for approval, and you can turn that off in Settings.
+- 📲 **WhatsApp with the brain:** the app watches WhatsApp Web itself without using AI, so it spends no tokens. New messages from your number reach the brain, which replies. It asks you before writing to anyone else.
+- 📱 **Test area:** iOS simulators on Mac, and Android devices and emulators on every system when they are installed. Open a device, look at its screen or hand the test to the chief. For web tests the project's test address opens in the browser, and agents read console errors too.
 - 🐙 **Developer friendly:** open a floor from an existing folder, from scratch (with git and a GitHub repo) or by cloning from GitHub. Every project card shows branch, changes and open pull requests; pull, commit, push and new branch are one click. The browser has iPhone, iPad and Android modes and an error console.
 - 📒 **Work log:** every request, handoff and open task is written down per floor. A new session starts from a short "where you left off" note.
-- ✨ **Skills, rules and training:** ready skills, your own skills, company rules, and feedback that becomes a member's permanent rule.
+- ✨ **Skills, rules and training:** ready skills, your own skills, company rules, and feedback that becomes a member's permanent rule. Every enabled skill is available to every agent.
+- 🔐 **Permission modes:** ask every step, accept edits, auto, plan, and a full access mode that asks nothing. Pick one in Settings.
+- 🪟 **Flexible layout:** drag the dividers between areas to resize them; double click to reset.
+- ⬆️ **In-app updates:** the app tells you when a new version is out, downloads it with one click and installs it on restart. If the internet drops it tells you, and you can play a small runner game while you wait.
 - 💾 **Backup:** back up the whole company to one file and restore it on another computer.
 - 🔔 **Notifications and permissions:** get notified when work is done or approval is needed. macOS permissions are asked once during setup.
 - 🌍 **English and Turkish.**
@@ -46,7 +50,12 @@ Idle team members wander off to the coffee bar, the ping pong table or the game 
 
 ## Install
 
-Requirements: [Claude Code](https://code.claude.com/docs/en/setup) and an account that includes it (Pro, Max, Team, Enterprise or Console). If Claude Code is missing, the app shows the install command on first launch.
+Requirements: one of these is enough.
+
+- [Claude Code](https://code.claude.com/docs/en/setup) and an account that includes it (Pro, Max, Team, Enterprise) or an Anthropic API key.
+- [OpenAI Codex](https://developers.openai.com/codex) and a ChatGPT account or an OpenAI API key.
+
+If neither is installed, the app shows the install command on first launch.
 
 ### Option 1: Download (easiest)
 
@@ -76,23 +85,25 @@ No terminal? Double click `Ac.command` on macOS or `Ac.bat` on Windows. On Linux
 
 ## First launch
 
-1. Name your office and your chief, pick a language.
-2. Pick your first team members from the ready made people, or choose **Skip for now** and add them later from the **Team** page.
-3. Pick skills, or skip.
-4. Add a project folder on the **Projects** page and press **Start** on the **Office** page.
-5. The first time, Claude Code asks you to sign in and to trust the folder. Both happen in the terminal at the bottom of the window.
+1. **Engine:** Claude Code or Codex. The app finds what is installed and signed in. Subscription sign in or an API key.
+2. **Voice:** the brain's voice. Computer voice, ElevenLabs, OpenAI or silent.
+3. **Brain:** give your brain a name.
+4. **Rooms:** pick the people you want on your personal floor, or skip.
+5. **Permissions:** on macOS folder access is granted once, and you can test notifications.
+
+Then talk to the brain: point it at a project folder, start one from scratch or have it clone from GitHub. A floor, a chief and a team are set up. You can also open floors yourself from the **Projects** page. The language starts as Turkish and stays that way until you change it.
 
 ## How it works
 
-Ajan Ofisi runs Claude Code inside the app. Each time a session opens, your company (team, rules, skills) is compiled into a Claude Code plugin and Claude Code starts with it in an embedded terminal. The office listens to Claude Code's own hook events on your machine and draws what is really happening.
+Ajan Ofisi runs Claude Code or Codex inside the app. Each time a session opens, your company (team, rules, skills) is compiled for the chosen engine and the engine starts with it in an embedded terminal. The brain and the chiefs use floors, the browser and test devices through the tools of a local MCP server on your machine. The office listens to the engine's own events and draws what is really happening.
 
 ## Privacy and security
 
-- The app **never sees or stores** your Claude password or key. You sign in through Claude Code's own login step.
+- With subscription sign in the app **never sees or stores** your password. You sign in through Claude Code's or Codex's own login step.
 - Live events are received only on this computer (`127.0.0.1`) with a secret key that changes on every launch. No port is open to the outside.
 - Nothing is written into your projects or into `~/.claude`. All data stays in the app's own data folder.
 - The app never asks for or keeps passwords. Each linked account keeps its browser session in its own profile, and API keys are stored with the system's encrypted storage.
-- The mode that skips every permission is not accepted. The starter rules require your approval for production database writes, deploys, payments and wallet operations.
+- The full access mode that asks nothing only runs if you turn it on in Settings, and a warning is shown when you do. The starter rules require your approval for production database writes, deploys, payments and wallet operations.
 - Skills are downloaded from their original repositories at a pinned version.
 
 ## Good to know
@@ -124,7 +135,7 @@ npm run paket:linux   # AppImage and deb
 | Folder | Contents |
 | --- | --- |
 | `main.js`, `preload.cjs` | Electron main process and the bridge to the interface |
-| `cekirdek/` | Company store, plugin compiler, state engine, work log, skill manager |
+| `cekirdek/` | Company store, plugin compiler, engines, brain and MCP tools, browser room, test area, state engine, work log, skill manager, updates |
 | `arayuz/` | Office scene and pages (no framework, no bundler) |
 | `katalog/` | The ready made skill list |
 
