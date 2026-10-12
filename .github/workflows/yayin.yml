@@ -1,0 +1,56 @@
+# Bu dosya GitHub Actions iş akışıdır. Çalışması için .github/workflows klasörüne taşınmalıdır:
+#   mkdir -p .github/workflows && git mv paket/yayin.yml .github/workflows/yayin.yml
+# Her gönderimde sınamalar çalışır. "v" ile başlayan bir etiket gönderilince
+# Windows ve Linux kurulum dosyaları derlenir ve GitHub sürümüne eklenir.
+# macOS kurulum dosyası burada üretilmez: Apple imzası ve onayı sertifikanın durduğu
+# Mac'te, betik/yayin-mac.sh ile yapılır ve aynı sürüme yüklenir.
+name: Yayin
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  sinama:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npm test
+
+  paket:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: sinama
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            komut: paket:win
+          - os: ubuntu-latest
+            komut: paket:linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run ${{ matrix.komut }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cikti/*.exe
+            cikti/*.AppImage
+            cikti/*.deb

@@ -1,0 +1,461 @@
+// Ayarlar sayfası: ofis adı, dil, çalışma biçimi, yapay zekâ motoru (Claude / OpenAI), giriş, model düzeni, veri klasörü.
+import { h, doldur, ikon, alan, anahtar, kopyala } from '../dom.js';
+import { depo, api, dinle, bildir, hataMetni } from '../depo.js';
+import { konus, sistemSesleri } from '../ses.js';
+
+const CLAUDE_MODELLER = { koordinator: ['opus', 'fable', 'sonnet'], calisan: ['sonnet', 'haiku', 'opus', 'fable'] };
+
+export function ayarlarSayfasi({ git } = {}) {
+  const kok = h('div', { class: 'sayfa ayarSayfa' });
+  // yeni katların açılacağı klasör
+  let projeKoku = '';
+  api.katKoku().then((r) => {
+    projeKoku = (r && r.yol) || '';
+    ciz();
+  });
+  // motorlar yeniden taranırken kartlar "aranıyor" gösterir
+  let taraniyor = false;
+  // yazılmakta olan anahtar yeniden çizimde kaybolmasın
+  const anahtarTaslak = { claude: '', codex: '', elevenlabs: '' };
+  // beynin ses listesi: türe göre bir kez yüklenir
+  const sesler = { tur: null, liste: [], hata: '' };
+  async function sesleriYukle(tur) {
+    sesler.tur = tur;
+    sesler.liste = [];
+    sesler.hata = '';
+    if (tur === 'sistem') sesler.liste = await sistemSesleri();
+    else if (tur === 'elevenlabs' || tur === 'openai') {
+      const r = await api.sesListe(tur);
+      if (r && r.tamam) sesler.liste = r.liste;
+      else sesler.hata = hataMetni(r);
+    }
+    ciz();
+  }
+
+  function beyinPaneli() {
+    const t = depo.t;
+    const b = depo.sirket.beyin;
+    const mb = depo.bilgi.motorlar || {};
+    const ad = h('input', { type: 'text', value: b.ad, maxlength: '40' });
+    ad.addEventListener('change', () => ad.value.trim() && api.sirketGuncelle({ beyin: { ad: ad.value.trim() } }));
+    const sahip = h('input', { type: 'text', value: b.sahip, maxlength: '40', placeholder: t('kur.sahipOrnek') });
+    sahip.addEventListener('change', () => api.sirketGuncelle({ beyin: { sahip: sahip.value.trim() } }));
+    const tur = b.ses.tur;
+    if (tur !== 'yok' && sesler.tur !== tur) queueMicrotask(() => sesleriYukle(tur));
+    const anahtarAdi = tur === 'elevenlabs' ? 'elevenlabs' : 'codex';
+    const anahtarVar = !!(mb.anahtarVar || {})[anahtarAdi];
+    const parca = [];
+    if ((tur === 'elevenlabs' || tur === 'openai') && !anahtarVar) {
+      const giris = h('input', { type: 'password', autocomplete: 'off', value: anahtarTaslak[anahtarAdi], oninput: () => (anahtarTaslak[anahtarAdi] = giris.value) });
+      parca.push(
+        alan(t(tur === 'elevenlabs' ? 'ses.anahtarEleven' : 'ses.anahtarOpenai'), giris, t(tur === 'elevenlabs' ? 'ses.anahtarElevenIpucu' : 'motor.anahtarIpucu.codex')),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'dugme ana',
+              disabled: !mb.sifreliDepo,
+              onclick: async () => {
+                if (!giris.value.trim()) return;
+                const r = await api.motorAnahtar({ motor: anahtarAdi, deger: giris.value.trim() });
+                if (!r || r.hata) return bildir(hataMetni(r), true);
+                anahtarTaslak[anahtarAdi] = '';
+                sesler.tur = null;
+              },
+            },
+            t('genel.kaydet')
+          )
+        )
+      );
+    } else if (tur !== 'yok') {
+      if (sesler.hata) parca.push(h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), sesler.hata));
+      const sec = h(
+        'select',
+        { onchange: () => api.sirketGuncelle({ beyin: { ses: { tur, ses: sec.value } } }) },
+        [!b.ses.ses ? h('option', { value: '' }, t('ses.secim')) : null, ...sesler.liste.map((v) => h('option', { value: v.id }, v.ad))]
+      );
+      sec.value = b.ses.ses;
+      parca.push(
+        alan(t('ses.secim'), sec),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'dugme',
+              onclick: async () => {
+                const r = await konus(t('ses.ornek', { x: b.ad }));
+                if (r && r.hata) bildir(hataMetni(r), true);
+              },
+            },
+            ikon('ses', 15),
+            t('ses.dinle')
+          ),
+          tur === 'elevenlabs' ? h('button', { type: 'button', class: 'dugme', onclick: () => api.motorAnahtar({ motor: 'elevenlabs', deger: '' }).then(() => (sesler.tur = null)) }, ikon('cop', 14), t('motor.anahtarSil')) : null
+        )
+      );
+    }
+    return h(
+      'section',
+      { class: 'panel' },
+      h('h2', null, t('ayar.beyin')),
+      h('div', { class: 'formIki' }, alan(t('kur.beyinAdi'), ad), alan(t('kur.sahip'), sahip)),
+      h(
+        'div',
+        { class: 'alan' },
+        h('span', { class: 'alanEtiket' }, t('kur.sesBaslik')),
+        bolmeli(
+          ['yok', 'sistem', 'elevenlabs', 'openai'].map((x) => [x, t('ses.' + x)]),
+          tur,
+          (v) => {
+            sesler.tur = null;
+            api.sirketGuncelle({ beyin: { ses: { tur: v, ses: '' } } });
+          }
+        ),
+        h('span', { class: 'alanIpucu' }, t('ses.' + tur + 'Aciklama'))
+      ),
+      parca
+    );
+  }
+
+  function bolmeli(secenekler, secili, sec) {
+    return h(
+      'div',
+      { class: 'bolmeli' },
+      secenekler.map(([deger, etiket]) => h('button', { type: 'button', class: secili === deger ? 'secili' : '', onclick: () => secili !== deger && sec(deger) }, etiket))
+    );
+  }
+
+  function motorKarti(motor) {
+    const t = depo.t;
+    const s = depo.sirket;
+    const mb = depo.bilgi.motorlar || {};
+    const arac = mb[motor];
+    const ad = t('motor.' + motor);
+    const yontem = s.giris[motor];
+    const parcalar = [h('h3', { class: 'motorBaslik' }, ad, mb.secilen === motor ? h('span', { class: 'rozet' }, t('motor.kullanilan')) : null)];
+
+    if (!arac) {
+      const komut = (mb.kurulum || {})[motor] || '';
+      const kopyaDugme = h('button', { type: 'button', onclick: async () => (kopyaDugme.textContent = (await kopyala(komut)) ? t('genel.kopyalandi') : t('genel.kopyala')) }, t('genel.kopyala'));
+      parcalar.push(
+        h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('motor.yok', { x: t('motor.arac.' + motor) })),
+        h('p', { class: 'ipucu' }, t('motor.yokAciklama.' + motor)),
+        h('div', { class: 'komut' }, h('code', null, komut), kopyaDugme),
+        h('div', { class: 'satirDugme' }, h('button', { type: 'button', class: 'dugme', onclick: () => api.claudeYolSec(motor) }, t('claude.yolSec')))
+      );
+      return h('div', { class: 'motorKart' }, parcalar);
+    }
+
+    parcalar.push(h('p', { class: 'durumSatir iyi' }, ikon('tik', 16), t('motor.var', { x: t('motor.arac.' + motor), s: arac.surum })), h('code', { class: 'yol' }, arac.yol));
+    parcalar.push(
+      h(
+        'div',
+        { class: 'alan' },
+        h('span', { class: 'alanEtiket' }, t('motor.giris')),
+        bolmeli(
+          [
+            ['abonelik', t('motor.abonelik')],
+            ['api', t('motor.api')],
+          ],
+          yontem,
+          (v) => api.sirketGuncelle({ giris: { ...s.giris, [motor]: v } })
+        ),
+        h('span', { class: 'alanIpucu' }, t('motor.girisIpucu.' + yontem))
+      )
+    );
+
+    if (yontem === 'abonelik') {
+      const g = arac.giris || {};
+      parcalar.push(
+        g.girisli
+          ? h('p', { class: 'durumSatir iyi' }, ikon('tik', 16), g.hesap ? t('motor.girisli', { x: g.hesap }) : t('motor.girisliHesapsiz'))
+          : h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('motor.girissiz')),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h(
+            'button',
+            {
+              type: 'button',
+              class: g.girisli ? 'dugme' : 'dugme ana',
+              onclick: async () => {
+                const r = await api.motorGiris({ motor, sutun: 100, satir: 30 });
+                if (!r || r.hata) return bildir(hataMetni(r), true);
+                bildir(t('motor.girisAcildi'));
+                if (git) git('ofis');
+              },
+            },
+            t(g.girisli ? 'motor.hesapDegistir' : 'motor.girisYap')
+          )
+        )
+      );
+    } else {
+      const kayitli = !!(mb.anahtarVar || {})[motor];
+      const giris = h('input', {
+        type: 'password',
+        autocomplete: 'off',
+        spellcheck: 'false',
+        placeholder: kayitli ? t('motor.anahtarKayitli') : motor === 'claude' ? 'sk-ant-…' : 'sk-…',
+        value: anahtarTaslak[motor],
+        oninput: () => (anahtarTaslak[motor] = giris.value),
+      });
+      const kaydet = async (deger) => {
+        const r = await api.motorAnahtar({ motor, deger });
+        if (!r || r.hata) return bildir(hataMetni(r), true);
+        anahtarTaslak[motor] = '';
+        bildir(t(deger ? 'motor.anahtarKaydedildi' : 'motor.anahtarSilindi'));
+      };
+      parcalar.push(
+        !mb.sifreliDepo ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('motor.depoYok')) : null,
+        kayitli ? h('p', { class: 'durumSatir iyi' }, ikon('tik', 16), t('motor.anahtarVar')) : h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('motor.anahtarYok')),
+        alan(t('motor.anahtar'), giris, t('motor.anahtarIpucu.' + motor)),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h('button', { type: 'button', class: 'dugme ana', disabled: !mb.sifreliDepo, onclick: () => giris.value.trim() && kaydet(giris.value.trim()) }, t('genel.kaydet')),
+          kayitli ? h('button', { type: 'button', class: 'dugme', onclick: () => kaydet('') }, ikon('cop', 14), t('motor.anahtarSil')) : null
+        )
+      );
+    }
+
+    // model düzeni: şef güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar
+    const modeller = s.modeller[motor];
+    const modelSec = (kat) => {
+      let secenekler;
+      if (motor === 'claude') {
+        secenekler = CLAUDE_MODELLER[kat].map((m) => [m, t('model.' + m)]);
+      } else {
+        const v = (mb.codexVarsayilan || {})[kat];
+        const liste = mb.codexModeller || [];
+        secenekler = [['', v ? t('model.otomatikAdli', { x: (liste.find((m) => m.slug === v) || { ad: v }).ad }) : t('model.otomatik')], ...liste.map((m) => [m.slug, m.ad + (m.aciklama ? ' · ' + m.aciklama : '')])];
+        if (modeller[kat] && !liste.some((m) => m.slug === modeller[kat])) secenekler.push([modeller[kat], modeller[kat]]);
+      }
+      const sec = h(
+        'select',
+        { onchange: () => api.sirketGuncelle({ modeller: { ...s.modeller, [motor]: { ...modeller, [kat]: sec.value } } }) },
+        secenekler.map(([d, e]) => h('option', { value: d }, e))
+      );
+      sec.value = modeller[kat];
+      return sec;
+    };
+    parcalar.push(
+      h('h4', { class: 'altBaslik' }, t('ayar.modeller')),
+      alan(t('ayar.koordinator'), modelSec('koordinator'), t('ayar.koordinatorIpucu')),
+      alan(t('ayar.calisan'), modelSec('calisan'), t('ayar.calisanIpucu'))
+    );
+    return h('div', { class: 'motorKart' }, parcalar);
+  }
+
+  // GitHub: giriş gh'nin kendi tarayıcı akışıyla yapılır, şifre ya da jeton uygulamaya girmez
+  function githubPaneli() {
+    const t = depo.t;
+    const g = depo.bilgi.github || {};
+    const komut = g.kurulum || '';
+    return h(
+      'section',
+      { class: 'panel' },
+      h('h2', null, 'GitHub'),
+      !g.var
+        ? [h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('github.yok')), h('div', { class: 'komut' }, h('code', null, komut))]
+        : [
+            g.girisli ? h('p', { class: 'durumSatir iyi' }, ikon('tik', 16), t('github.girisli', { x: g.hesap || '' })) : h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('github.girissiz')),
+            h(
+              'div',
+              { class: 'satirDugme' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: g.girisli ? 'dugme' : 'dugme ana',
+                  onclick: async () => {
+                    const r = await api.motorGiris({ motor: 'github', sutun: 100, satir: 30 });
+                    if (!r || r.hata) return bildir(hataMetni(r), true);
+                    bildir(t('motor.girisAcildi'));
+                    if (git) git('ofis');
+                  },
+                },
+                t(g.girisli ? 'motor.hesapDegistir' : 'motor.girisYap')
+              )
+            ),
+          ],
+      h('p', { class: 'ipucu' }, t('github.not'))
+    );
+  }
+
+  function ciz() {
+    const t = depo.t;
+    const s = depo.sirket;
+    const b = depo.bilgi;
+    const mb = b.motorlar || {};
+    const ad = h('input', { type: 'text', value: s.ad, maxlength: '60' });
+    ad.addEventListener('change', () => ad.value.trim() && api.sirketGuncelle({ ad: ad.value.trim() }));
+    const dilSec = bolmeli(
+      [
+        ['tr', 'Türkçe'],
+        ['en', 'English'],
+      ],
+      s.dil,
+      async (d) => {
+        await api.dilDegistir(d);
+        location.reload();
+      }
+    );
+    const izin = h('select', { onchange: () => api.sirketGuncelle({ izinModu: izin.value }) }, ['', 'acceptEdits', 'auto', 'plan'].map((m) => h('option', { value: m }, t('izin.' + (m || 'varsayilan')))));
+    izin.value = s.izinModu || '';
+    const secilenAd = mb.secilen ? t('motor.' + mb.secilen) : t('motor.hicbiri');
+
+    doldur(
+      kok,
+      h('header', { class: 'sayfaBas' }, h('div', null, h('h1', null, t('ayar.baslik')))),
+      h(
+        'div',
+        { class: 'ayarIzgara' },
+        beyinPaneli(),
+        h('section', { class: 'panel' }, h('h2', null, t('ayar.ofis')), alan(t('ayar.ofisAdi'), ad), h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('ayar.dil')), dilSec, h('span', { class: 'alanIpucu' }, t('ayar.dilIpucu')))),
+        h(
+          'section',
+          { class: 'panel' },
+          h('h2', null, t('ayar.calisma')),
+          h('div', { class: 'alan yatay' }, anahtar(s.takimModu, (v) => api.sirketGuncelle({ takimModu: v }), t('ayar.takim')), h('span', { class: 'alanIpucu' }, t('ayar.takimIpucu'))),
+          alan(t('ayar.izin'), izin, t('ayar.izinIpucu')),
+          h(
+            'div',
+            { class: 'alan' },
+            h('span', { class: 'alanEtiket' }, t('ayar.projeKoku')),
+            h(
+              'div',
+              { class: 'klasorSatir' },
+              h('code', { class: 'yol' }, projeKoku || '…'),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: 'dugme',
+                  onclick: async () => {
+                    const r = await api.katKokuSec();
+                    if (r && r.yol) {
+                      projeKoku = r.yol;
+                      ciz();
+                    }
+                  },
+                },
+                ikon('klasor', 14),
+                t('katKur.kokDegistir')
+              )
+            ),
+            h('span', { class: 'alanIpucu' }, t('ayar.projeKokuIpucu'))
+          ),
+          h('div', { class: 'alan yatay' }, anahtar(s.bildirim, (v) => api.sirketGuncelle({ bildirim: v }), t('ayar.bildirim')), h('span', { class: 'alanIpucu' }, t('ayar.bildirimIpucu')))
+        ),
+        h(
+          'section',
+          { class: 'panel genis' },
+          h('h2', null, t('motor.baslik')),
+          h('p', { class: 'ipucu' }, t('motor.aciklama')),
+          h(
+            'div',
+            { class: 'alan' },
+            h('span', { class: 'alanEtiket' }, t('motor.secim')),
+            bolmeli(
+              [
+                ['otomatik', t('motor.otomatik')],
+                ['claude', t('motor.claude')],
+                ['codex', t('motor.codex')],
+              ],
+              s.motor,
+              (v) => api.sirketGuncelle({ motor: v })
+            ),
+            h('span', { class: 'alanIpucu' }, t('motor.secimIpucu'))
+          ),
+          h('p', { class: 'durumSatir ' + (mb.hazir ? 'iyi' : 'kotu') }, ikon(mb.hazir ? 'tik' : 'ucgen', 16), t(mb.hazir ? 'motor.hazir' : 'motor.hazirDegil', { x: secilenAd })),
+          h('div', { class: 'motorIzgara' + (taraniyor ? ' taraniyor' : '') }, motorKarti('claude'), motorKarti('codex')),
+          h(
+            'div',
+            { class: 'satirDugme' },
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'dugme',
+                disabled: taraniyor,
+                onclick: async () => {
+                  taraniyor = true;
+                  ciz();
+                  const r = await api.claudeYenile();
+                  taraniyor = false;
+                  ciz();
+                  bildir(r && r.motorlar && r.motorlar.secilen ? t('motor.yenilendi') : t('motor.hicbiriYok'), !(r && r.motorlar && r.motorlar.secilen));
+                },
+              },
+              taraniyor ? h('span', { class: 'donen' }) : ikon('yenile', 14),
+              t(taraniyor ? 'motor.taraniyor' : 'motor.yenidenTara')
+            )
+          ),
+          h('p', { class: 'ipucu' }, t('motor.gizlilik'))
+        ),
+        githubPaneli(),
+        h(
+          'section',
+          { class: 'panel' },
+          h('h2', null, t('ayar.veri')),
+          h('p', { class: 'ipucu' }, t('ayar.veriAciklama')),
+          h('code', { class: 'yol' }, b.veriKlasoru || ''),
+          h(
+            'div',
+            { class: 'satirDugme' },
+            h('button', { type: 'button', class: 'dugme', onclick: () => api.veriAc() }, ikon('klasor', 15), t('ayar.veriAc')),
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'dugme',
+                onclick: async () => {
+                  const r = await api.yedekAl();
+                  if (r && r.hata) bildir(hataMetni(r), true);
+                  else if (r && r.tamam) bildir(t('ayar.yedekAlindi', { x: r.yol }));
+                },
+              },
+              ikon('indir', 15),
+              t('ayar.yedekAl')
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'dugme',
+                onclick: async () => {
+                  if (!confirm(t('ayar.yedekOnay'))) return;
+                  const r = await api.yedekYukle();
+                  if (r && r.hata) bildir(hataMetni(r), true);
+                  else if (r && r.tamam) bildir(t('ayar.yedekYuklendi', { x: r.katSayisi }));
+                },
+              },
+              ikon('yenile', 15),
+              t('ayar.yedekYukle')
+            )
+          ),
+          h('p', { class: 'ipucu' }, t('ayar.yedekNot')),
+          b.sunucuHata ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('ayar.sunucuHata', { x: b.sunucuHata })) : null,
+          h('p', { class: 'ipucu' }, t('ayar.surum', { x: b.surum || '' }))
+        )
+      )
+    );
+  }
+
+  dinle('sirket', () => {
+    if (document.activeElement && kok.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+    ciz();
+  });
+  dinle('bilgi', () => {
+    if (document.activeElement && kok.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+    ciz();
+  });
+  ciz();
+  return { kok, goster: ciz, gizle() {} };
+}

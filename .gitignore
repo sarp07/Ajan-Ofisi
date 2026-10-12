@@ -1,0 +1,4 @@
+node_modules/
+cikti/
+*.yedek
+.DS_Store

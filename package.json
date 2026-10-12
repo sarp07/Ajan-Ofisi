@@ -1,0 +1,112 @@
+{
+  "name": "ajan-ofis",
+  "productName": "Ajan Ofisi",
+  "version": "0.3.0",
+  "description": "Claude Code ekibini canlı bir ofis olarak gösteren ve yöneten masaüstü uygulaması",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/durum.test.js && node test/metin.test.js",
+    "paket": "electron-builder --publish never",
+    "paket:mac": "electron-builder --mac --publish never",
+    "paket:win": "electron-builder --win --publish never -c.npmRebuild=false",
+    "paket:linux": "electron-builder --linux --publish never",
+    "yayin:mac": "bash betik/yayin-mac.sh"
+  },
+  "devDependencies": {
+    "electron": "43.7.7",
+    "electron-builder": "26.0.12"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "node-pty": "^1.1.0",
+    "tar": "^7.5.22"
+  },
+  "license": "MIT",
+  "author": "Sarp Solazan",
+  "private": true,
+  "build": {
+    "appId": "app.ajanofisi.masaustu",
+    "productName": "Ajan Ofisi",
+    "directories": {
+      "output": "cikti",
+      "buildResources": "paket"
+    },
+    "files": [
+      "main.js",
+      "preload.cjs",
+      "arayuz/**",
+      "cekirdek/**",
+      "katalog/**",
+      "package.json",
+      "!arayuz/ikon.icns"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "npmRebuild": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "arayuz/ikon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSDocumentsFolderUsageDescription": "Your team works on the files of the project folder you choose.",
+        "NSDesktopFolderUsageDescription": "Your team works on the files of the project folder you choose.",
+        "NSDownloadsFolderUsageDescription": "Your team works on the files of the project folder you choose.",
+        "NSRemovableVolumesUsageDescription": "Your team works on the files of the project folder you choose.",
+        "NSNetworkVolumesUsageDescription": "Your team works on the files of the project folder you choose.",
+        "NSAppleEventsUsageDescription": "Your team may run scripts that control other apps when you ask for it."
+      }
+    },
+    "win": {
+      "icon": "arayuz/ikon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "arayuz/ikon.png",
+      "category": "Development",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "maintainer": "Sarp Solazan"
+    },
+    "artifactName": "AjanOfisi-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sarp07",
+        "repo": "Ajan-Ofisi"
+      }
+    ],
+    "afterPack": "paket/sonra.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sarp07/Ajan-Ofisi.git"
+  },
+  "homepage": "https://github.com/sarp07/Ajan-Ofisi"
+}

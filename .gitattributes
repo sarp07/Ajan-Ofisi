@@ -1,0 +1,10 @@
+# Metin dosyalari depoda LF olarak durur
+* text=auto
+
+# Baslaticilar kendi sistemlerinin satir sonunu korur
+*.bat text eol=crlf
+*.sh text eol=lf
+*.command text eol=lf
+
+*.png binary
+*.icns binary

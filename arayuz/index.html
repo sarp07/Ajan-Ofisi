@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self' data: blob:" />
+    <title>Ajan Ofisi</title>
+    <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="stil.css" />
+  </head>
+  <body>
+    <div class="acilis" id="acilis" aria-hidden="true">
+      <div class="acilisBina">
+        <span class="acilisKat" style="--i: 0"></span>
+        <span class="acilisKat" style="--i: 1"></span>
+        <span class="acilisKat" style="--i: 2"></span>
+        <span class="acilisKat tepe" style="--i: 3"></span>
+      </div>
+      <div class="acilisAd">Ajan Ofisi</div>
+      <div class="acilisAlt" id="acilisAlt"></div>
+      <div class="acilisCizgi"><span></span></div>
+    </div>
+    <header class="ust" id="ust"></header>
+    <div class="govde">
+      <nav class="ray" id="ray"></nav>
+      <main id="icerik"></main>
+    </div>
+    <div class="bildirim" id="bildirim" hidden></div>
+    <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script type="module" src="uygulama.js"></script>
+  </body>
+</html>
