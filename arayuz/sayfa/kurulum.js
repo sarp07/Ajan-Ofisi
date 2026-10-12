@@ -349,7 +349,7 @@ export function kurulum({ bitti }) {
     const t = depo.t;
     const s = depo.sirket;
     const mac = depo.bilgi.platform === 'darwin';
-    const izin = h('select', { onchange: () => api.sirketGuncelle({ izinModu: izin.value }) }, ['', 'acceptEdits', 'auto', 'plan'].map((m) => h('option', { value: m }, t('izin.' + (m || 'varsayilan')))));
+    const izin = h('select', { onchange: () => api.sirketGuncelle({ izinModu: izin.value }) }, ['', 'acceptEdits', 'auto', 'plan', 'bypassPermissions'].map((m) => h('option', { value: m }, t('izin.' + (m || 'varsayilan')))));
     izin.value = s.izinModu || '';
     const sonucSatiri = () => {
       if (!izinSonuc) return null;

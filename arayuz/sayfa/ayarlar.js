@@ -345,7 +345,7 @@ export function ayarlarSayfasi({ git } = {}) {
         location.reload();
       }
     );
-    const izin = h('select', { onchange: () => api.sirketGuncelle({ izinModu: izin.value }) }, ['', 'acceptEdits', 'auto', 'plan'].map((m) => h('option', { value: m }, t('izin.' + (m || 'varsayilan')))));
+    const izin = h('select', { onchange: () => api.sirketGuncelle({ izinModu: izin.value }) }, ['', 'acceptEdits', 'auto', 'plan', 'bypassPermissions'].map((m) => h('option', { value: m }, t('izin.' + (m || 'varsayilan')))));
     izin.value = s.izinModu || '';
     const secilenAd = mb.secilen ? t('motor.' + mb.secilen) : t('motor.hicbiri');
 
@@ -363,6 +363,8 @@ export function ayarlarSayfasi({ git } = {}) {
           h('h2', null, t('ayar.calisma')),
           h('div', { class: 'alan yatay' }, anahtar(s.takimModu, (v) => api.sirketGuncelle({ takimModu: v }), t('ayar.takim')), h('span', { class: 'alanIpucu' }, t('ayar.takimIpucu'))),
           alan(t('ayar.izin'), izin, t('ayar.izinIpucu')),
+          s.izinModu === 'bypassPermissions' ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 16), t('izin.tamUyari')) : null,
+          h('div', { class: 'alan yatay' }, anahtar(s.tarayiciOnaysiz, (v) => api.sirketGuncelle({ tarayiciOnaysiz: v }), t('ayar.tarayiciOnaysiz')), h('span', { class: 'alanIpucu' }, t('ayar.tarayiciOnaysizIpucu'))),
           h(
             'div',
             { class: 'alan' },

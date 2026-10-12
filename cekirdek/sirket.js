@@ -9,7 +9,8 @@ export const MASA_SAYISI = 10; // şefin masası hariç
 export const SES_TURLERI = ['yok', 'sistem', 'elevenlabs', 'openai'];
 export const BEYIN_VARSAYILAN_AD = { tr: 'Beyin', en: 'Brain' };
 const MODELLER = ['', 'sonnet', 'opus', 'haiku', 'fable'];
-const IZIN_MODLARI = ['', 'acceptEdits', 'auto', 'plan'];
+// bypassPermissions: hiçbir şey sorulmaz. Sahip Ayarlar'da uyarıyı görerek seçer.
+const IZIN_MODLARI = ['', 'acceptEdits', 'auto', 'plan', 'bypassPermissions'];
 const MOTOR_SECIMLERI = ['otomatik', 'claude', 'codex'];
 const GIRIS_YONTEMLERI = ['abonelik', 'api'];
 // Model düzeni: şef (koordinatör) güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar.
@@ -58,6 +59,8 @@ export function varsayilanSirket(dil = 'tr') {
     // yeni katların açılacağı klasör (boşsa uygulama seçer: ~/GitHub varsa orası, yoksa ~/Ajan Ofisi Projeler)
     projeKoku: '',
     otomatikGuncelleme: true,
+    // tarayıcıda tıklama ve yazma her seferinde onay sorsun mu
+    tarayiciOnaysiz: false,
     bildirim: true,
   };
 }
@@ -277,6 +280,7 @@ export function normalle(ham) {
     claudeYolu: metin(s.claudeYolu, 1000),
     codexYolu: metin(s.codexYolu, 1000),
     otomatikGuncelleme: s.otomatikGuncelleme !== false,
+    tarayiciOnaysiz: !!s.tarayiciOnaysiz,
     projeKoku: path.isAbsolute(metin(s.projeKoku, 1000)) ? metin(s.projeKoku, 1000) : '',
     bildirim: s.bildirim !== false,
   };

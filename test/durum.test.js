@@ -65,13 +65,14 @@ assert.equal(depo.proje(pr.id).sef.ad, 'Atlas');
 assert.equal(katGorunumu(depo.veri, depo.proje(pr2.id)).sef.ad, 'Nil');
 depo.projeSil(pr2.id);
 // bozuk girdi güvenli hale gelir
-const kotu = normalle({ ad: 5, ajanlar: [{ ad: 'x'.repeat(500), model: 'yok', renk: 'kirmizi', masa: 99 }, null, 'a'], kurallar: [{ metin: '' }, 'iyi kural'], izinModu: 'bypassPermissions' });
+const kotu = normalle({ ad: 5, ajanlar: [{ ad: 'x'.repeat(500), model: 'yok', renk: 'kirmizi', masa: 99 }, null, 'a'], kurallar: [{ metin: '' }, 'iyi kural'], izinModu: 'hepsiSerbest' });
 assert.equal(kotu.ajanlar.length, 1);
 assert.equal(kotu.ajanlar[0].ad.length, 60);
 assert.equal(kotu.ajanlar[0].model, '');
 assert.match(kotu.ajanlar[0].renk, /^#[0-9A-F]{6}$/i);
 assert.equal(kotu.ajanlar[0].masa, 0);
-assert.equal(kotu.izinModu, '', 'tüm izinleri atlayan mod kabul edilmez');
+assert.equal(kotu.izinModu, '', 'bilinmeyen izin modu kabul edilmez');
+assert.equal(normalle({ izinModu: 'bypassPermissions' }).izinModu, 'bypassPermissions', 'tam yetki sahibin seçimiyle kabul edilir');
 assert.deepEqual(kotu.kurallar.map((k) => k.metin), ['iyi kural']);
 // masa sayısı dolunca kalanlar ortak masaya düşer
 const cok = normalle({ ajanlar: Array.from({ length: MASA_SAYISI + 2 }, (_, i) => ({ ad: 'A' + i })) });

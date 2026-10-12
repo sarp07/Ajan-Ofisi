@@ -56,6 +56,11 @@ const M = {
     testAdres: 'Test adresi',
     testKapisi: (kim) => `Bir işi bitti saymadan önce ${kim ? kim + ' adlı ekip üyesine' : 'ekipteki test sorumlusuna, yoksa kendin'} doğrulat. Doğrulamadan geçmeyen işi kullanıcıya bitti diye bildirme, neyin kaldığını söyle.`,
     notlar: 'Proje notları',
+    testAraclari: 'Test araçların',
+    testAraclariAciklama: (p) =>
+      `Uygulamanın ofis araçlarıyla işi kendin dene, sahibe "dene" deme. ${p === 'darwin' ? 'iOS: ios_cihazlar ile simülatörleri listele, ios_ac ile aç, ios_kur ve ios_baslat ile uygulamayı kur ve başlat, ios_goruntu ile ekrana bak. ' : 'Bu bilgisayar Mac değil, iOS simülatörü yok. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (emülatör ya da bağlı cihaz açık olmalı). Web: tarayicilar listesindeki Test sekmesini tarayici_ac ile aç, tarayici_cihaz ile iPhone ya da Android moduna al, tarayici_goruntu ile bak, tarayici_konsol ile hataları oku. Bir işi bitti saymadan önce ilgili testi yap ve sonucu raporuna yaz.`,
+    digerSkiller: 'Kullanabileceğin diğer skiller',
+    digerSkillAciklama: 'Şirkette açık olan skiller. İşin bir skile uyuyorsa sormadan kullan.',
     ekipAciklamaCodex: 'Şirkette seninle birlikte çalışanlar. İşini bitirince son mesajında ne yaptığını ve neyin kaldığını kısaca yaz, sonucu şef toplar.',
     ekipCagriCodex: 'Ekip üyesi çağırırken spawn_agent aracında agent_type olarak tam şu adı kullan. Her üyeye işi tek mesajda, gereken bütün bilgiyle ver ve sonuçlarını bekleyip topla:',
     skillAciklamaCodex: 'Şu skiller sana atandı. İlgili işte önce skilin SKILL.md dosyasını oku ve oradaki adımları uygula, sonra kendi bilginle devam et:',
@@ -90,6 +95,11 @@ const M = {
     testAdres: 'Test address',
     testKapisi: (kim) => `Before you call a job done, have ${kim ? 'the team member named ' + kim : 'the tester on the team, or yourself if there is none,'} verify it. Do not report unverified work to the user as finished, say what is left.`,
     notlar: 'Project notes',
+    testAraclari: 'Your test tools',
+    testAraclariAciklama: (p) =>
+      `Try the work yourself with the app's ofis tools instead of asking the owner to try it. ${p === 'darwin' ? 'iOS: list simulators with ios_cihazlar, open one with ios_ac, install and launch with ios_kur and ios_baslat, look at the screen with ios_goruntu. ' : 'This computer is not a Mac, so there is no iOS Simulator. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (an emulator or connected device must be running). Web: open the Test tab from tarayicilar with tarayici_ac, switch to iPhone or Android with tarayici_cihaz, look with tarayici_goruntu and read errors with tarayici_konsol. Before you call a job done, run the matching test and put the result in your report.`,
+    digerSkiller: 'Other skills you can use',
+    digerSkillAciklama: 'Skills that are on in this company. If the job matches a skill, use it without asking.',
     ekipAciklamaCodex: 'The people who work with you in this company. When you finish, end with a short note on what you did and what is left. The chief collects the results.',
     ekipCagriCodex: 'When you call a team member, pass exactly this name as agent_type to the spawn_agent tool. Give each member the whole job in one message with everything they need, then wait for and collect the results:',
     skillAciklamaCodex: 'These skills are assigned to you. For matching work first read the skill SKILL.md file and follow its steps, then continue with your own knowledge:',
@@ -138,15 +148,13 @@ export function ajanGovde(sirket, ajan, skillBilgi = {}, proje = null, { motor =
   if ((ajan.talimat || '').trim()) bolum.push(ajan.talimat.trim());
   if (ajan.kurallar.length) bolum.push(`## ${m.kurallarin}\n\n${liste(ajan.kurallar)}`);
   if (sirket.kurallar.length) bolum.push(`## ${m.sirketKurallari}\n\n${liste(sirket.kurallar.map((k) => k.metin))}`);
+  // atanan skiller öncelikli, şirkette açık olan diğer bütün skiller de her ajana açıktır
   const atanan = ajan.skiller.filter((id) => skillBilgi[id]);
-  if (atanan.length) {
-    const ac = (id) => (skillBilgi[id].aciklama ? '. ' + skillBilgi[id].aciklama.slice(0, 200) : '');
-    bolum.push(
-      codex
-        ? `## ${m.skiller}\n\n${m.skillAciklamaCodex}\n\n${liste(atanan.map((id) => `${path.join(skillKlasoru, id, 'SKILL.md')}${ac(id)}`))}`
-        : `## ${m.skiller}\n\n${m.skillAciklama}\n\n${liste(atanan.map((id) => `/${EKLENTI_ADI}:${id}${ac(id)}`))}`
-    );
-  }
+  const diger = Object.keys(skillBilgi).filter((id) => !atanan.includes(id));
+  const ac = (id) => (skillBilgi[id].aciklama ? '. ' + skillBilgi[id].aciklama.slice(0, 160) : '');
+  const yol = (id) => (codex ? path.join(skillKlasoru, id, 'SKILL.md') : `/${EKLENTI_ADI}:${id}`);
+  if (atanan.length) bolum.push(`## ${m.skiller}\n\n${codex ? m.skillAciklamaCodex : m.skillAciklama}\n\n${liste(atanan.map((id) => yol(id) + ac(id)))}`);
+  if (diger.length) bolum.push(`## ${m.digerSkiller}\n\n${m.digerSkillAciklama}\n\n${liste(diger.map((id) => yol(id) + ac(id)))}`);
   const digerleri = sirket.ajanlar.filter((a) => a.id !== ajan.id);
   const satirlar = [
     `${sirket.sef.ad} (${sirket.sef.unvan}): ${m.sef}`,
@@ -217,6 +225,7 @@ export function sefMetni(sirket, { proje = null, devir = '', motor = 'claude' } 
     bolum.push(`## ${m.ekibin}\n\n${m.ekipYok}`);
   }
   if (sirket.kurallar.length) bolum.push(`## ${m.sirketKurallari}\n\n${liste(sirket.kurallar.map((k) => k.metin))}`);
+  if (proje) bolum.push(`## ${m.testAraclari}\n\n${m.testAraclariAciklama(process.platform)}`);
   bolum.push(projeMetni(sirket, proje));
   bolum.push(devir);
   return bolum.filter(Boolean).join('\n\n') + '\n';
@@ -325,7 +334,7 @@ function codexDerle(sirket, { hedef, skiller, port, anahtar, etiket, proje, devi
 }
 
 // Codex oturumunun bağımsız değişkenleri. Kullanıcının ~/.codex ayarlarına dosya yazılmaz, her şey -c ile verilir.
-const CODEX_IZIN = { '': ['-s', 'workspace-write', '-a', 'on-request'], acceptEdits: ['-s', 'workspace-write', '-a', 'on-request'], auto: ['--approve-for-me'], plan: ['-s', 'read-only', '-a', 'on-request'] };
+const CODEX_IZIN = { '': ['-s', 'workspace-write', '-a', 'on-request'], acceptEdits: ['-s', 'workspace-write', '-a', 'on-request'], auto: ['--approve-for-me'], plan: ['-s', 'read-only', '-a', 'on-request'], bypassPermissions: ['--dangerously-bypass-approvals-and-sandbox'] };
 
 export function codexArgumanlari(sirket, cikti, { klasor, surdur = '' }) {
   const arg = surdur ? ['resume', surdur] : [];

@@ -934,7 +934,9 @@ function mcpAraclari(kapsam) {
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...ONAYSIZ_ARACLAR];
+  // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
+  const onaysiz = !!depo.veri.tarayiciOnaysiz;
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -943,7 +945,7 @@ function mcpBayraklari(motor, { adres, hedef, beyin }) {
   }
   // sahip_onayi sahibin cevabını 10 dakikaya kadar bekler: araç zaman aşımı buna göre uzatılır (varsayılan 60 sn)
   const arg = ['-c', `mcp_servers.${MCP_ADI}.url=${JSON.stringify(adres)}`, '-c', `mcp_servers.${MCP_ADI}.default_tools_approval_mode="approve"`, '-c', `mcp_servers.${MCP_ADI}.tool_timeout_sec=900`];
-  for (const a of ONAYLI_ARACLAR) arg.push('-c', `mcp_servers.${MCP_ADI}.tools.${a}.approval_mode="prompt"`);
+  if (!onaysiz) for (const a of ONAYLI_ARACLAR) arg.push('-c', `mcp_servers.${MCP_ADI}.tools.${a}.approval_mode="prompt"`);
   return arg;
 }
 
@@ -1031,7 +1033,7 @@ function ipcKur() {
   });
 
   h('sirket:guncelle', (yama) => {
-    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme'];
+    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme', 'tarayiciOnaysiz'];
     const temiz = {};
     for (const k of izinli) if (yama && k in yama) temiz[k] = yama[k];
     if (temiz.beyin) temiz.beyin = { ...depo.veri.beyin, ...temiz.beyin };
