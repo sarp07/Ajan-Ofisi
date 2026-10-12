@@ -179,7 +179,7 @@ function ajanNormalle(a, mevcutKodlar, doluMasalar) {
 }
 
 const klasorAdi = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || '';
-export const PLATFORMLAR = ['whatsapp', 'telegram', 'gmail', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'github', 'vercel', 'cloudflare', 'supabase', 'google', 'apple', 'diger'];
+export const PLATFORMLAR = ['appledev', 'apple', 'playconsole', 'github', 'vercel', 'cloudflare', 'supabase', 'firebase', 'expo', 'google', 'gmail', 'telegram', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'diger'];
 
 // Proje kartı: klasör, alan adları, bağlı hesaplar (yalnızca etiket, şifre asla), test bilgisi ve notlar.
 function projeNormalle(p, kimlikler, sefSablon) {
@@ -196,7 +196,8 @@ function projeNormalle(p, kimlikler, sefSablon) {
     aciklama: metin(ham.aciklama, 600).trim(),
     alanAdlari: [...new Set((Array.isArray(ham.alanAdlari) ? ham.alanAdlari : []).map((x) => metin(x, 120).trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')).filter(Boolean))].slice(0, 20),
     hesaplar: (Array.isArray(ham.hesaplar) ? ham.hesaplar : [])
-      .filter((x) => x && typeof x === 'object')
+      // WhatsApp tarayıcıda tutulmaz (beyne doğrudan bağlıdır): eski WhatsApp Web sekmeleri kayıttan düşer
+      .filter((x) => x && typeof x === 'object' && x.platform !== 'whatsapp' && !/whatsapp\.(com|net)/i.test(String(x.adres || '')))
       .map((x) => ({
         id: typeof x.id === 'string' && x.id ? x.id.slice(0, 20) : kimlik(),
         platform: PLATFORMLAR.includes(x.platform) ? x.platform : 'diger',

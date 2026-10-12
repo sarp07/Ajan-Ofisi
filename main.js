@@ -742,7 +742,12 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
     fs.writeFileSync(cikti.sefDosya, talimat);
     // sohbet odası yalnızca okur (eklenen dosyalar). Çalışma odası kendi klasörüne yazar, komutlar onaya düşer.
     arg = oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` });
-    if (!calisma) arg.push('--disallowedTools', 'Bash,Edit,Write,MultiEdit,NotebookEdit,PowerShell');
+    if (!calisma) {
+      const i = arg.indexOf('--disallowedTools');
+      const yasak = 'Bash,Edit,Write,MultiEdit,NotebookEdit,PowerShell';
+      if (i >= 0) arg[i + 1] += ',' + yasak;
+      else arg.push('--disallowedTools', yasak);
+    }
   } else {
     if (apiModu) {
       try {
@@ -972,10 +977,15 @@ function onayCoz(k, mesajId, evet) {
   return true;
 }
 
+// WhatsApp tarayıcıda kullanılmaz: beyne doğrudan bağlıdır. Ajan WhatsApp Web'e gidemez, açık kalmış bir sayfayı da okuyamaz.
+const whatsappAdresi = (u) => /(^|\/\/)([a-z0-9-]+\.)*whatsapp\.(com|net)(\/|$)/i.test(String(u || ''));
+const WHATSAPP_YASAK = 'WhatsApp tarayıcıda kullanılmaz. Sahibe whatsapp_yaz ile yaz; sahibin mesajları sana kendiliğinden gelir.';
+
 function tarayiciIslemleri(kapsam) {
-  const hesap = (id) => {
+  const hesap = (id, adres) => {
     const h = kapsamHesaplari(kapsam).find((x) => x.id === id);
     if (!h) throw new Error('Bu hesaba erişimin yok ya da hesap bulunamadı: ' + id);
+    if (whatsappAdresi(adres) || (oda && whatsappAdresi(oda.bilgi(id).adres))) throw new Error(WHATSAPP_YASAK);
     return h;
   };
   return {
@@ -985,13 +995,13 @@ function tarayiciIslemleri(kapsam) {
         return { hesap_id: h.id, kat: h.kat, platform: h.platform, ad: h.ad, not: h.not, acik: b.acik, adres: b.adres || '' };
       }),
     ac: async (id, adres) => {
-      const h = hesap(id);
+      const h = hesap(id, adres);
       oda.ac(h);
       if (adres) await oda.gezin(id, adres);
       else await new Promise((r) => setTimeout(r, 1500));
       return oda.bilgi(id);
     },
-    git: (id, adres) => (hesap(id), oda.gezin(id, adres)),
+    git: (id, adres) => (hesap(id, adres), oda.gezin(id, adres)),
     metin: (id) => (hesap(id), oda.metin(id)),
     goruntu: (id) => (hesap(id), oda.goruntu(id)),
     konsol: (id, seviye) => (hesap(id), oda.konsol(id, { seviye }).slice(-80).map((k) => ({ seviye: k.seviye, mesaj: k.mesaj, kaynak: k.kaynak, satir: k.satir }))),

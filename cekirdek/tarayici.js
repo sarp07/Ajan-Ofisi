@@ -4,7 +4,6 @@
 import { WebContentsView, session } from 'electron';
 
 export const BASLANGIC = {
-  whatsapp: 'https://web.whatsapp.com/',
   telegram: 'https://web.telegram.org/',
   gmail: 'https://mail.google.com/',
   google: 'https://accounts.google.com/',
@@ -19,7 +18,11 @@ export const BASLANGIC = {
   vercel: 'https://vercel.com/dashboard',
   cloudflare: 'https://dash.cloudflare.com/',
   supabase: 'https://supabase.com/dashboard',
+  appledev: 'https://developer.apple.com/account',
   apple: 'https://appstoreconnect.apple.com/',
+  playconsole: 'https://play.google.com/console',
+  firebase: 'https://console.firebase.google.com/',
+  expo: 'https://expo.dev/',
 };
 
 const guvenliAdres = (u) => {

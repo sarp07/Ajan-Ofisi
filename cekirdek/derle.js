@@ -56,6 +56,8 @@ const M = {
     testAdres: 'Test adresi',
     testKapisi: (kim) => `Bir işi bitti saymadan önce ${kim ? kim + ' adlı ekip üyesine' : 'ekipteki test sorumlusuna, yoksa kendin'} doğrulat. Doğrulamadan geçmeyen işi kullanıcıya bitti diye bildirme, neyin kaldığını söyle.`,
     notlar: 'Proje notları',
+    tarayici: 'Tarayıcı',
+    tarayiciKurali: 'Web işleri için yalnızca uygulamanın kendi tarayıcısını kullan (tarayici_ araçları): Apple Developer, App Store Connect, Google Play Console, GitHub, Vercel gibi bağlı hesaplar ve projenin Test sekmesi orada açıktır, girişler hazırdır. Asla yeni Chrome, Safari ya da başka bir tarayıcı penceresi açma; open, start, xdg-open komutlarıyla adres açma, Playwright ya da Puppeteer ile tarayıcı başlatma. Gereken hesap listede yoksa sahibe Tarayıcı sayfasından eklemesini söyle. WhatsApp tarayıcıda kullanılmaz.',
     testAraclari: 'Test araçların',
     testAraclariAciklama: (p) =>
       `Uygulamanın ofis araçlarıyla işi kendin dene, sahibe "dene" deme. ${p === 'darwin' ? 'iOS: ios_cihazlar ile simülatörleri listele, ios_ac ile aç, ios_kur ve ios_baslat ile uygulamayı kur ve başlat, ios_goruntu ile ekrana bak. ' : 'Bu bilgisayar Mac değil, iOS simülatörü yok. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (emülatör ya da bağlı cihaz açık olmalı). Web: tarayicilar listesindeki Test sekmesini tarayici_ac ile aç, tarayici_cihaz ile iPhone ya da Android moduna al, tarayici_goruntu ile bak, tarayici_konsol ile hataları oku. Bir işi bitti saymadan önce ilgili testi yap ve sonucu raporuna yaz.`,
@@ -95,6 +97,8 @@ const M = {
     testAdres: 'Test address',
     testKapisi: (kim) => `Before you call a job done, have ${kim ? 'the team member named ' + kim : 'the tester on the team, or yourself if there is none,'} verify it. Do not report unverified work to the user as finished, say what is left.`,
     notlar: 'Project notes',
+    tarayici: 'Browser',
+    tarayiciKurali: 'For web work use only the app\'s own browser (the tarayici_ tools): linked accounts such as Apple Developer, App Store Connect, Google Play Console, GitHub and Vercel, and the project\'s Test tab are open there and already signed in. Never open a new Chrome, Safari or any other browser window; do not open addresses with open, start or xdg-open, and do not launch a browser with Playwright or Puppeteer. If an account you need is missing, ask the owner to add it on the Browser page. WhatsApp is not used in the browser.',
     testAraclari: 'Your test tools',
     testAraclariAciklama: (p) =>
       `Try the work yourself with the app's ofis tools instead of asking the owner to try it. ${p === 'darwin' ? 'iOS: list simulators with ios_cihazlar, open one with ios_ac, install and launch with ios_kur and ios_baslat, look at the screen with ios_goruntu. ' : 'This computer is not a Mac, so there is no iOS Simulator. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (an emulator or connected device must be running). Web: open the Test tab from tarayicilar with tarayici_ac, switch to iPhone or Android with tarayici_cihaz, look with tarayici_goruntu and read errors with tarayici_konsol. Before you call a job done, run the matching test and put the result in your report.`,
@@ -107,7 +111,7 @@ const M = {
   },
 };
 
-const PLATFORM_ADI = { gmail: 'Gmail', instagram: 'Instagram', x: 'X', tiktok: 'TikTok', youtube: 'YouTube', linkedin: 'LinkedIn', facebook: 'Facebook', telegram: 'Telegram', discord: 'Discord', whatsapp: 'WhatsApp', github: 'GitHub', vercel: 'Vercel', cloudflare: 'Cloudflare', supabase: 'Supabase', google: 'Google', apple: 'Apple' };
+const PLATFORM_ADI = { appledev: 'Apple Developer', apple: 'App Store Connect', playconsole: 'Google Play Console', github: 'GitHub', vercel: 'Vercel', cloudflare: 'Cloudflare', supabase: 'Supabase', firebase: 'Firebase', expo: 'Expo', google: 'Google', gmail: 'Gmail', telegram: 'Telegram', instagram: 'Instagram', x: 'X', tiktok: 'TikTok', youtube: 'YouTube', linkedin: 'LinkedIn', facebook: 'Facebook', discord: 'Discord' };
 
 // Proje kartının talimata eklenen hali. Şef için tam, ekip üyeleri için kısa.
 export function projeMetni(sirket, proje, { tam = true } = {}) {
@@ -129,6 +133,7 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   if (t.adres) testSatir.push(`${m.testAdres}: ${t.adres}`);
   if (t.zorunlu && tam) testSatir.push(m.testKapisi(sorumlu ? sorumlu.ad : ''));
   if (testSatir.length) b.push(`### ${m.test}\n\n` + testSatir.join('\n'));
+  b.push(`### ${m.tarayici}\n\n${m.tarayiciKurali}`);
   if (tam && proje.notlar.trim()) b.push(`### ${m.notlar}\n\n${proje.notlar.trim()}`);
   return b.length > 1 ? b.join('\n\n') : '';
 }
@@ -358,5 +363,7 @@ export function oturumArgumanlari(sirket, { eklenti, sefDosya, oturumId, surdur 
   const model = sirket.sef.model || sirket.modeller.claude.koordinator;
   if (model) arg.push('--model', model);
   if (sirket.izinModu) arg.push('--permission-mode', sirket.izinModu);
+  // ajanlar yeni tarayıcı açmaz: uygulamanın kendi tarayıcısı kullanılır
+  arg.push('--disallowedTools', 'mcp__claude-in-chrome');
   return arg;
 }

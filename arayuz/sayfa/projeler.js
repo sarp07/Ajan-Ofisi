@@ -3,8 +3,8 @@ import { h, doldur, ikon, alan, anahtar, cipGirisi } from '../dom.js';
 import { depo, api, dinle, bildir, hataMetni } from '../depo.js';
 import { katKurAc } from '../katKur.js';
 
-export const PLATFORMLAR = ['whatsapp', 'telegram', 'gmail', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'github', 'vercel', 'cloudflare', 'supabase', 'google', 'apple', 'diger'];
-export const PLATFORM_ADI = { gmail: 'Gmail', instagram: 'Instagram', x: 'X', tiktok: 'TikTok', youtube: 'YouTube', linkedin: 'LinkedIn', facebook: 'Facebook', telegram: 'Telegram', discord: 'Discord', whatsapp: 'WhatsApp', github: 'GitHub', vercel: 'Vercel', cloudflare: 'Cloudflare', supabase: 'Supabase', google: 'Google', apple: 'Apple' };
+export const PLATFORMLAR = ['appledev', 'apple', 'playconsole', 'github', 'vercel', 'cloudflare', 'supabase', 'firebase', 'expo', 'google', 'gmail', 'telegram', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'diger'];
+export const PLATFORM_ADI = { appledev: 'Apple Developer', apple: 'App Store Connect', playconsole: 'Google Play Console', github: 'GitHub', vercel: 'Vercel', cloudflare: 'Cloudflare', supabase: 'Supabase', firebase: 'Firebase', expo: 'Expo', google: 'Google', gmail: 'Gmail', telegram: 'Telegram', instagram: 'Instagram', x: 'X', tiktok: 'TikTok', youtube: 'YouTube', linkedin: 'LinkedIn', facebook: 'Facebook', discord: 'Discord' };
 
 export function neZaman(z, t) {
   if (!z) return '';
