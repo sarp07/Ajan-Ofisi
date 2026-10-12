@@ -58,6 +58,8 @@ const M = {
     notlar: 'Proje notları',
     tarayici: 'Tarayıcı',
     tarayiciKurali: 'Web işleri için yalnızca uygulamanın kendi tarayıcısını kullan (tarayici_ araçları): Apple Developer, App Store Connect, Google Play Console, GitHub, Vercel gibi bağlı hesaplar ve projenin Test sekmesi orada açıktır, girişler hazırdır. Asla yeni Chrome, Safari ya da başka bir tarayıcı penceresi açma; open, start, xdg-open komutlarıyla adres açma, Playwright ya da Puppeteer ile tarayıcı başlatma. Gereken hesap listede yoksa sahibe Tarayıcı sayfasından eklemesini söyle. WhatsApp tarayıcıda kullanılmaz.',
+    surecler: 'Süreçler',
+    surecKurali: 'Başlattığın sunucu ve süreçlerin PID numarasını kaydet, işin bitince yalnızca o PID ile kapat (kill <pid>). pkill, killall ya da desenle süreç öldürme kullanma: bilgisayardaki başka uygulamaları (Docker, Ajan Ofisi, ekip arkadaşlarının sunucuları) da kapatır. Docker Desktop\'ı ya da Docker sanal makinesini kapatma, yeniden başlatma.',
     testAraclari: 'Test araçların',
     testAraclariAciklama: (p) =>
       `Uygulamanın ofis araçlarıyla işi kendin dene, sahibe "dene" deme. ${p === 'darwin' ? 'iOS: ios_cihazlar ile simülatörleri listele, ios_ac ile aç, ios_kur ve ios_baslat ile uygulamayı kur ve başlat, ios_goruntu ile ekrana bak. ' : 'Bu bilgisayar Mac değil, iOS simülatörü yok. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (emülatör ya da bağlı cihaz açık olmalı). Web: tarayicilar listesindeki Test sekmesini tarayici_ac ile aç, tarayici_cihaz ile iPhone ya da Android moduna al, tarayici_goruntu ile bak, tarayici_konsol ile hataları oku. Bir işi bitti saymadan önce ilgili testi yap ve sonucu raporuna yaz.`,
@@ -99,6 +101,8 @@ const M = {
     notlar: 'Project notes',
     tarayici: 'Browser',
     tarayiciKurali: 'For web work use only the app\'s own browser (the tarayici_ tools): linked accounts such as Apple Developer, App Store Connect, Google Play Console, GitHub and Vercel, and the project\'s Test tab are open there and already signed in. Never open a new Chrome, Safari or any other browser window; do not open addresses with open, start or xdg-open, and do not launch a browser with Playwright or Puppeteer. If an account you need is missing, ask the owner to add it on the Browser page. WhatsApp is not used in the browser.',
+    surecler: 'Processes',
+    surecKurali: 'Record the PID of every server and process you start and when you are done stop only that PID (kill <pid>). Never use pkill, killall or pattern matching to kill processes: it also stops other apps on the computer (Docker, Ajan Ofisi, your teammates\' servers). Never quit or restart Docker Desktop or its virtual machine.',
     testAraclari: 'Your test tools',
     testAraclariAciklama: (p) =>
       `Try the work yourself with the app's ofis tools instead of asking the owner to try it. ${p === 'darwin' ? 'iOS: list simulators with ios_cihazlar, open one with ios_ac, install and launch with ios_kur and ios_baslat, look at the screen with ios_goruntu. ' : 'This computer is not a Mac, so there is no iOS Simulator. '}Android: android_cihazlar, android_kur, android_adres, android_goruntu (an emulator or connected device must be running). Web: open the Test tab from tarayicilar with tarayici_ac, switch to iPhone or Android with tarayici_cihaz, look with tarayici_goruntu and read errors with tarayici_konsol. Before you call a job done, run the matching test and put the result in your report.`,
@@ -134,6 +138,7 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   if (t.zorunlu && tam) testSatir.push(m.testKapisi(sorumlu ? sorumlu.ad : ''));
   if (testSatir.length) b.push(`### ${m.test}\n\n` + testSatir.join('\n'));
   b.push(`### ${m.tarayici}\n\n${m.tarayiciKurali}`);
+  b.push(`### ${m.surecler}\n\n${m.surecKurali}`);
   if (tam && proje.notlar.trim()) b.push(`### ${m.notlar}\n\n${proje.notlar.trim()}`);
   return b.length > 1 ? b.join('\n\n') : '';
 }
@@ -364,6 +369,7 @@ export function oturumArgumanlari(sirket, { eklenti, sefDosya, oturumId, surdur 
   if (model) arg.push('--model', model);
   if (sirket.izinModu) arg.push('--permission-mode', sirket.izinModu);
   // ajanlar yeni tarayıcı açmaz: uygulamanın kendi tarayıcısı kullanılır
-  arg.push('--disallowedTools', 'mcp__claude-in-chrome');
+  // desenle süreç öldürmek başka uygulamaları da kapatabilir (Docker, ofisin kendisi): yalnızca PID ile kill
+  arg.push('--disallowedTools', 'mcp__claude-in-chrome,Bash(pkill:*),Bash(killall:*)');
   return arg;
 }

@@ -1,5 +1,5 @@
 // Ajan Ofisi ana süreç: pencere, şirket verisi, gömülü Claude Code oturumu, canlı olay alıcısı.
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen, net, crashReporter } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -1745,7 +1745,8 @@ function pencereAc() {
   });
   pencere.webContents.on('will-navigate', (e) => e.preventDefault());
   pencere.loadURL('ofis://uygulama/arayuz/index.html');
-  pencere.on('closed', () => (pencere = null));
+  pencere.on('closed', () => (gunluk('pencere kapandı'), (pencere = null)));
+  pencere.on('unresponsive', () => gunluk('pencere yanıt vermiyor'));
   if (oda) oda.pencereAyarla(pencere);
 
   if (SINAMA) {
@@ -1764,6 +1765,38 @@ function pencereAc() {
   }
 }
 
+// ---------- uygulama günlüğü ----------
+// Uygulama beklenmedik kapanırsa sebebi buradan okunur: yakalanmamış hata, çöken süreç, kapanış. Yalnızca bu bilgisayarda
+// tutulur, dışarı gönderilmez. Dosya 2 MB'ı geçince eski yarısı atılır. Çökme dökümleri de yalnızca yerelde saklanır.
+function gunluk(...parca) {
+  try {
+    const klasor = path.join(app.getPath('userData'), 'gunluk');
+    const dosya = path.join(klasor, 'uygulama.log');
+    fs.mkdirSync(klasor, { recursive: true });
+    if (fs.existsSync(dosya) && fs.statSync(dosya).size > 2 * 1024 * 1024) fs.writeFileSync(dosya, fs.readFileSync(dosya, 'utf8').slice(-1024 * 1024));
+    fs.appendFileSync(dosya, `${new Date().toISOString()} ${parca.map((x) => (x instanceof Error ? x.stack || x.message : typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}\n`);
+  } catch {
+    /* günlük yazılamazsa uygulama yine çalışır */
+  }
+}
+crashReporter.start({ uploadToServer: false });
+process.on('uncaughtException', (e) => gunluk('yakalanmamış hata', e));
+process.on('unhandledRejection', (e) => gunluk('yakalanmamış söz', e));
+app.on('render-process-gone', (_e, wc, d) => {
+  gunluk('arayüz süreci kapandı', d);
+  // arayüz çökerse pencere kendini yeniden yükler, oturumlar ana süreçte sürdüğü için iş kaybolmaz
+  if (pencere && wc === pencere.webContents && d.reason !== 'clean-exit') setTimeout(() => pencere && !pencere.isDestroyed() && pencere.reload(), 1000);
+});
+app.on('child-process-gone', (_e, d) => gunluk('yardımcı süreç kapandı', d));
+app.on('before-quit', () => gunluk('kapanıyor'));
+process.on('exit', (kod) => gunluk('çıkış', { kod }));
+for (const sinyal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+  process.on(sinyal, () => {
+    gunluk('sinyal', sinyal);
+    app.quit();
+  });
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -1775,6 +1808,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    gunluk('açıldı', { surum: app.getVersion(), sistem: process.platform + ' ' + process.arch });
     const veri = app.getPath('userData');
     depo = new SirketDeposu(path.join(veri, 'sirket'));
     depo.yukle(app.getLocale().toLowerCase().startsWith('tr') ? 'tr' : 'en');
