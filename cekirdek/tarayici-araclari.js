@@ -60,9 +60,9 @@ export function tarayiciAraclari(ops) {
       calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), secici: g.secici ? String(g.secici) : '', enter: !!g.enter }),
     },
     whatsapp_yaz: {
-      aciklama: 'WhatsApp Web hesabında bir sohbeti açar ve mesaj gönderir. Sahibin kendi numarasına yazarken onay sorulmaz. Başka birine yazacaksan araç önce sahibin onayını ister.',
-      sema: nesne({ hesap_id: hesapId, sohbet: yazi('Sohbetin adı ya da numarası (listede görünen)'), metin: yazi('Gönderilecek mesaj') }, ['hesap_id', 'sohbet', 'metin']),
-      calistir: async (g) => ops.whatsappYaz(String(g.hesap_id), String(g.sohbet), String(g.metin)),
+      aciklama: 'Beynin bağlı WhatsApp numarasından mesaj gönderir (tarayıcı gerekmez). numara verilmezse sahibin numarasına gider ve onay sorulmaz. Başka bir numaraya yazacaksan araç önce sahibin onayını ister.',
+      sema: nesne({ metin: yazi('Gönderilecek mesaj'), numara: yazi('Ülke koduyla telefon numarası (ör. +90 5xx xxx xx xx). Boş bırakılırsa sahibe gider.') }, ['metin']),
+      calistir: async (g) => ops.whatsappYaz(g.numara ? String(g.numara) : '', String(g.metin)),
     },
     sahip_onayi: {
       aciklama: 'Sahibe evet ya da hayır sorusu sorar ve cevabını bekler (en çok 10 dakika). Soru konuşma panelinde onay kartı olarak çıkar. Dışarıya etkisi olan her işten önce kullan.',

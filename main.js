@@ -31,6 +31,7 @@ import { SABLONLAR } from './cekirdek/sablonlar.js';
 import * as taslak from './cekirdek/taslak.js';
 import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from './cekirdek/kayit.js';
 import { MOTOR, cevirici } from './cekirdek/dil.js';
+import { WhatsappBaglantisi } from './cekirdek/whatsapp.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
 const SINAMA = !!process.env.AJAN_OFIS_EKRAN;
@@ -894,53 +895,35 @@ async function klonKat(repo) {
   return katAc(hedef);
 }
 
-// ---------- WhatsApp dinleyici ----------
-// Açık WhatsApp Web sekmelerinde sahibin sohbeti yapay zekâ kullanmadan izlenir. Okunmamış yeni mesaj gelince
-// yalnızca o mesaj beyne iletilir. Beynin WhatsApp'ı sürekli okuyup jeton harcamasına gerek kalmaz.
+// ---------- WhatsApp ----------
+// Beynin numarası WhatsApp'a bağlı cihaz olarak bağlanır (Ayarlar > Beyin, QR). Ekran okunmaz, yoklama yapılmaz:
+// sahibin numarasından gelen mesaj olay olarak gelir ve yalnızca o mesaj beyne iletilir. Sesli mesaj yazıya çevrilir.
 const rakamlar = (x) => String(x || '').replace(/\D/g, '');
-function sahipSohbetiMi(baslik) {
-  const sahip = depo.veri.beyin.whatsapp || '';
-  if (!sahip) return false;
-  const r = rakamlar(sahip);
-  if (r.length >= 7) return rakamlar(baslik).endsWith(r.slice(-10));
-  return String(baslik).trim().toLowerCase() === sahip.trim().toLowerCase();
+function sahipNumarasiMi(numara) {
+  const sahip = rakamlar(depo.veri.beyin.whatsapp);
+  return sahip.length >= 7 && rakamlar(numara).slice(-10) === sahip.slice(-10);
 }
 
-const whatsappSon = new Map(); // hesap kimliği -> görülmüş mesaj kimlikleri
-async function whatsappIzle() {
-  try {
-    const beyin = katlar.get('beyin');
-    if (beyin && beyin.oturum.acik && depo.veri.beyin.whatsapp && oda) {
-      for (const h of tumHesaplar().filter((x) => x.platform === 'whatsapp' && oda.sekmeler.has(x.id))) {
-        const iletilen = whatsappSon.get(h.id);
-        const ilkBakis = !iletilen;
-        const gorulen = iletilen || new Set();
-        whatsappSon.set(h.id, gorulen);
-        const yeni = [];
-        let baslik = '';
-        // 1) Sahibin sohbeti açıksa: gelen mesajları kimliğiyle izle (açık sohbette okunmamış rozeti çıkmaz)
-        const acik = await oda.whatsappAcikSohbet(h.id).catch(() => null);
-        if (acik && sahipSohbetiMi(acik.baslik)) {
-          baslik = acik.baslik;
-          for (const m of acik.gelen) if (!gorulen.has(m.id)) (gorulen.add(m.id), yeni.push(m.metin));
-        } else {
-          // 2) Kapalıysa: sohbet listesinde okunmamış rozeti ve son mesaj önizlemesi
-          const s = (await oda.whatsappSohbetler(h.id).catch(() => [])).find((x) => sahipSohbetiMi(x.baslik));
-          if (s && s.okunmamis && s.onizleme) {
-            baslik = s.baslik;
-            const iz = 'liste:' + s.onizleme;
-            if (!gorulen.has(iz)) (gorulen.add(iz), yeni.push(s.onizleme));
-          }
-        }
-        // ilk bakışta eski mesajları yeniden iletme, yalnızca hafızaya al
-        if (ilkBakis || !yeni.length) continue;
-        oturumaYaz(beyin, `[WhatsApp · ${baslik}] ${yeni.join('\n')}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${baslik}" olarak gönder. Sayfayı ayrıca okumana gerek yok: yeni mesajlar sana kendiliğinden gelir.)`).catch(() => {});
-      }
+let whatsapp = null;
+async function whatsappMesaji({ numara, metin, ses }) {
+  if (!sahipNumarasiMi(numara)) return; // başkalarının mesajları beyne gitmez
+  let yazi = metin;
+  if (ses) {
+    try {
+      yazi = (await yaziyaCevir({ ses: ses.veri, mime: ses.mime, dil: depo.veri.dil, openaiAnahtar: anahtarlar.al('codex'), elevenAnahtar: anahtarlar.al('elevenlabs') })) || '';
+      yazi = '(sesli mesaj) ' + yazi;
+    } catch {
+      yazi = '(sesli mesaj geldi ama yazıya çevrilemedi: Ayarlar\'dan OpenAI ya da ElevenLabs anahtarı eklenmeli)';
     }
-  } catch {
-    /* sayfa değişmiş olabilir, bir sonraki turda yeniden denenir */
   }
-  setTimeout(whatsappIzle, 4000);
+  if (!yazi.trim()) return;
+  const beyin = katAl('beyin');
+  if (!beyin.oturum.acik) {
+    const r = await beyinBaslat({ sutun: 120, satir: 36 });
+    if (r && r.hata && r.hata !== 'acik') return;
+    gonder('sirket', gorunum());
+  }
+  oturumaYaz(beyin, `[WhatsApp · ${depo.veri.beyin.sahip || 'Sahip'}] ${yazi}\n(Sahibin kendi numarasından geldi, kimliği WhatsApp doğruladı. Cevabını whatsapp_yaz ile gönder.)`).catch(() => {});
 }
 
 // ---------- tarayıcı odası ----------
@@ -1016,12 +999,14 @@ function tarayiciIslemleri(kapsam) {
     tikla: (id, hedef) => (hesap(id), oda.tikla(id, hedef)),
     yaz: (id, girdi) => (hesap(id), oda.yaz(id, girdi)),
     onay: (soru) => sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru),
-    whatsappYaz: async (id, sohbet, metin) => {
-      hesap(id);
+    whatsappYaz: async (hedef, metin) => {
+      if (!whatsapp || whatsapp.durum.baglanti !== 'bagli') throw new Error('WhatsApp bağlı değil. Sahibe Ayarlar > Beyin bölümünden WhatsApp\'ı bağlamasını söyle.');
+      const sahip = depo.veri.beyin.whatsapp;
+      const kime = hedef || sahip;
+      if (!kime) throw new Error('Sahibin WhatsApp numarası Ayarlar > Beyin bölümünde girilmemiş.');
       // sahibin kendi numarası dışındaki herkese yazmak sahibin onayına bağlıdır
-      if (!sahipSohbetiMi(sohbet) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta "${sohbet}" sohbetine şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
-      if (!oda.sekmeler.has(id)) oda.ac(hesap(id));
-      await oda.whatsappYaz(id, sohbet, metin);
+      if (!sahipNumarasiMi(kime) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
+      await whatsapp.gonder(kime, metin);
       return 'Mesaj gönderildi.';
     },
   };
@@ -1425,6 +1410,16 @@ function ipcKur() {
       return { hata: 'ses', ayrinti: String(e.message || e) };
     }
   });
+  h('whatsapp:durum', () => (whatsapp ? { ...whatsapp.durum } : { baglanti: 'kapali' }));
+  h('whatsapp:bagla', async () => {
+    try {
+      await whatsapp.baslat();
+      return { tamam: true };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e) };
+    }
+  });
+  h('whatsapp:cikis', async () => (await whatsapp.cikis(), { tamam: true }));
   h('ses:yaziyaVar', () => ({ var: anahtarlar.var('codex') || anahtarlar.var('elevenlabs') }));
   h('motor:anahtar', ({ motor, deger }) => {
     if (motor === 'elevenlabs') {
@@ -1817,7 +1812,8 @@ if (!app.requestSingleInstanceLock()) {
     guncelleyici.baslat({ otomatik: depo.veri.otomatikGuncelleme });
     pencereAc();
     baglantiIzle();
-    whatsappIzle();
+    whatsapp = new WhatsappBaglantisi({ klasor: path.join(app.getPath('userData'), 'whatsapp'), degisti: (d) => gonder('whatsapp', d), mesaj: (m) => whatsappMesaji(m).catch(() => {}) });
+    if (whatsapp.kayitliMi()) whatsapp.baslat().catch(() => {});
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     setInterval(() => {
       for (const k of katlar.values()) if (k.oturum.acik) durumGonder(k, true);
@@ -1836,6 +1832,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('before-quit', () => {
+    if (whatsapp) whatsapp.durdur().catch(() => {});
     for (const k of katlar.values()) k.oturum.durdur();
   });
   app.on('window-all-closed', () => {

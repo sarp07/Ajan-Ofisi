@@ -4844,3 +4844,25 @@ body.surukleX * {
     grid-template-columns: 1fr;
   }
 }
+
+/* WhatsApp bağlantısı: QR ve adımlar yan yana, dar ekranda alt alta */
+.wpQr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin: 6px 0 4px;
+}
+.wpQr img {
+  background: #fff;
+  padding: 10px;
+  border-radius: 12px;
+  image-rendering: pixelated;
+}
+.wpAdim {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--soluk);
+  line-height: 1.7;
+  font-size: 13px;
+}

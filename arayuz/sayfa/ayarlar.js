@@ -32,6 +32,41 @@ export function ayarlarSayfasi({ git } = {}) {
     ciz();
   }
 
+  // WhatsApp bağlantısı: durum ana süreçten gelir, QR görünürken telefondan okutulur
+  let wpDurum = { baglanti: 'kapali' };
+  api.whatsappDurum().then((d) => ((wpDurum = d || wpDurum), ciz()));
+  api.whatsappDinle((d) => {
+    wpDurum = d;
+    if (kok.isConnected) ciz();
+  });
+
+  function whatsappBolumu() {
+    const t = depo.t;
+    const d = wpDurum;
+    const durum =
+      d.baglanti === 'bagli'
+        ? h('p', { class: 'durumSatir iyi' }, h('span', { class: 'katNokta' }), t('wp.bagli', { x: d.numara ? '+' + d.numara : '' }))
+        : d.baglanti === 'baglaniyor'
+          ? h('p', { class: 'durumSatir' }, h('span', { class: 'donen' }), t('wp.baglaniyor'))
+          : d.baglanti === 'qr'
+            ? null
+            : h('p', { class: 'ipucu' }, d.hata === 'cikisYapildi' ? t('wp.cikisYapildi') : d.hata === 'qrSuresi' ? t('wp.qrSuresi') : t('wp.aciklama'));
+    return h(
+      'div',
+      { class: 'alan wpBaglanti' },
+      h('span', { class: 'alanEtiket' }, t('wp.baslik')),
+      durum,
+      d.baglanti === 'qr' && d.qr ? h('div', { class: 'wpQr' }, h('img', { src: d.qr, alt: t('wp.qrAlt'), width: '220', height: '220' }), h('ol', { class: 'wpAdim' }, h('li', null, t('wp.adim1')), h('li', null, t('wp.adim2')), h('li', null, t('wp.adim3')))) : null,
+      h(
+        'div',
+        { class: 'satirDugme' },
+        d.baglanti === 'kapali'
+          ? h('button', { type: 'button', class: 'dugme ana', onclick: async () => { const r = await api.whatsappBagla(); if (r && r.hata) bildir(hataMetni(r), true); } }, ikon('telefon', 14), t('wp.bagla'))
+          : h('button', { type: 'button', class: 'dugme', onclick: () => api.whatsappCikis() }, ikon('cop', 14), d.baglanti === 'bagli' ? t('wp.cikis') : t('genel.vazgec'))
+      )
+    );
+  }
+
   function beyinPaneli() {
     const t = depo.t;
     const b = depo.sirket.beyin;
@@ -108,6 +143,7 @@ export function ayarlarSayfasi({ git } = {}) {
       h('h2', null, t('ayar.beyin')),
       h('div', { class: 'formIki' }, alan(t('kur.beyinAdi'), ad), alan(t('kur.sahip'), sahip)),
       alan(t('ayar.beyinWhatsapp'), wp, t('ayar.beyinWhatsappIpucu', { x: b.ad })),
+      whatsappBolumu(),
       h(
         'div',
         { class: 'alan' },
