@@ -57,6 +57,7 @@ export function varsayilanSirket(dil = 'tr') {
     codexYolu: '',
     // yeni katların açılacağı klasör (boşsa uygulama seçer: ~/GitHub varsa orası, yoksa ~/Ajan Ofisi Projeler)
     projeKoku: '',
+    otomatikGuncelleme: true,
     bildirim: true,
   };
 }
@@ -273,6 +274,7 @@ export function normalle(ham) {
     modeller: modellerNormalle(s.modeller),
     claudeYolu: metin(s.claudeYolu, 1000),
     codexYolu: metin(s.codexYolu, 1000),
+    otomatikGuncelleme: s.otomatikGuncelleme !== false,
     projeKoku: path.isAbsolute(metin(s.projeKoku, 1000)) ? metin(s.projeKoku, 1000) : '',
     bildirim: s.bildirim !== false,
   };

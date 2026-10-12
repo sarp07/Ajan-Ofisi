@@ -51,6 +51,8 @@ export async function yukle() {
   depo.katalog = b.katalog;
   depo.sablonlar = b.sablonlar;
   depo.odaSablonlari = b.odaSablonlari || [];
+  depo.guncelleme = b.guncelleme || null;
+  depo.yenilikler = b.yenilikler || null;
   depo.bilgi = b.bilgi;
   depo.oturumlar = b.oturumlar || {};
   sirketKoy(b.sirket);

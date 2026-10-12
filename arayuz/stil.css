@@ -4429,3 +4429,161 @@ code.yol {
     height: 42px;
   }
 }
+
+/* ---------- güncellemeler ---------- */
+.guncelKap {
+  position: fixed;
+  top: 13px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 60;
+  -webkit-app-region: no-drag;
+}
+
+.guncelRozet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 184, 166, 0.45);
+  background: rgba(23, 184, 166, 0.12);
+  color: var(--vurgu);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  animation: belir 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.guncelRozet.hazir {
+  border-color: rgba(87, 178, 106, 0.5);
+  background: rgba(87, 178, 106, 0.14);
+  color: #8fd49c;
+}
+
+.guncelPencere {
+  position: relative;
+  width: min(520px, 100%);
+}
+
+.guncelKapat {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.guncelBas {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guncelBas h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.guncelBas p {
+  margin: 2px 0 0;
+  color: var(--soluk);
+  font-size: 12.5px;
+}
+
+.guncelSimge {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--vurguKoyu);
+  color: var(--vurgu);
+}
+
+.guncelSimge.hazir {
+  background: rgba(87, 178, 106, 0.16);
+  color: #8fd49c;
+}
+
+.guncelCubuk {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel3);
+  overflow: hidden;
+}
+
+.guncelCubuk span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--vurgu);
+  transition: width 0.3s ease-out;
+}
+
+.guncelNot {
+  margin: 0;
+  color: var(--soluk);
+  font-size: 12.5px;
+}
+
+.guncelNotlar {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--cizgi);
+  border-radius: 10px;
+  background: var(--panel2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.guncelNotlar h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--soluk);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.guncelDugmeler {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.guncelOzet {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--soluk);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* uygulama arkadayken köşede çıkan küçük pencere */
+body.guncelKucuk {
+  background: var(--panel);
+  -webkit-app-region: drag;
+  overflow: hidden;
+}
+
+body.guncelKucuk #kok {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  height: 100vh;
+  border: 1px solid var(--cizgi2);
+  border-radius: 12px;
+}
+
+body.guncelKucuk button {
+  -webkit-app-region: no-drag;
+}
+
+body.guncelKucuk .guncelDugmeler {
+  margin-top: auto;
+  justify-content: flex-start;
+}

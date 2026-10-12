@@ -9,6 +9,7 @@ import { kurallarSayfasi } from './sayfa/kurallar.js';
 import { ayarlarSayfasi } from './sayfa/ayarlar.js';
 import { tarayiciSayfasi } from './sayfa/tarayici.js';
 import { kurulum } from './sayfa/kurulum.js';
+import { guncellemeKur } from './guncelleme.js';
 
 const SAYFALAR = [
   ['ofis', 'ofis', ofisSayfasi],
@@ -130,6 +131,11 @@ async function basla() {
   document.title = depo.sirket.ad;
   ustCiz();
   git('ofis');
+  // güncelleme rozeti üst çubuğun sağında durur; ustCiz her seferinde çubuğu yeniden çizdiği için ayrı bir kapta tutulur
+  const guncelKap = document.createElement('div');
+  guncelKap.className = 'guncelKap';
+  document.body.append(guncelKap);
+  guncellemeKur({ api, depo, ustRozetKap: guncelKap });
   if (!depo.sirket.kurulumBitti) {
     document.body.append(kurulum({ bitti: () => git('ofis') }));
   }

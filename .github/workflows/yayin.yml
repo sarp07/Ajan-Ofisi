@@ -54,3 +54,6 @@ jobs:
             cikti/*.exe
             cikti/*.AppImage
             cikti/*.deb
+            cikti/*.blockmap
+            cikti/latest.yml
+            cikti/latest-linux.yml

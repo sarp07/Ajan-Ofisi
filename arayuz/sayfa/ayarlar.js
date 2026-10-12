@@ -252,6 +252,42 @@ export function ayarlarSayfasi({ git } = {}) {
     return h('div', { class: 'motorKart' }, parcalar);
   }
 
+  // Güncellemeler: mevcut sürüm, elle kontrol, otomatik kontrol
+  let guncel = depo.guncelleme || null;
+  api.guncellemeDinle((d) => {
+    guncel = d;
+    if (kok.isConnected && !kok.hidden) ciz();
+  });
+  function guncellemePaneli() {
+    const t = depo.t;
+    const g = guncel || {};
+    const s = depo.sirket;
+    const satir = {
+      gelistirme: [null, t('guncel.gelistirme')],
+      kontrol: ['donen', t('guncel.kontrolEdiliyor')],
+      yok: ['iyi', t('guncel.guncel')],
+      var: ['uyari', t('guncel.var', { x: g.surum })],
+      iniyor: ['donen', t('guncel.yuzde', { x: g.yuzde || 0 })],
+      indi: ['iyi', t('guncel.hazir', { x: g.surum })],
+      hata: ['kotu', g.hata || t('hata.genel')],
+    }[g.asama] || [null, g.etkin === false ? t('guncel.gelistirme') : t('guncel.bekliyor')];
+    return h(
+      'section',
+      { class: 'panel' },
+      h('h2', null, t('guncel.baslik')),
+      h('p', { class: 'ipucu' }, t('guncel.mevcut', { x: g.mevcut || depo.bilgi.surum || '' })),
+      h('p', { class: 'durumSatir ' + (satir[0] === 'iyi' ? 'iyi' : satir[0] === 'kotu' || satir[0] === 'uyari' ? 'kotu' : '') }, satir[0] === 'donen' ? h('span', { class: 'donen' }) : ikon(satir[0] === 'iyi' ? 'tik' : satir[0] ? 'ucgen' : 'saat', 16), satir[1]),
+      h(
+        'div',
+        { class: 'satirDugme' },
+        g.asama === 'var' ? h('button', { type: 'button', class: 'dugme ana', onclick: () => api.guncellemeIndir() }, ikon('indir', 14), t('guncel.simdi')) : null,
+        g.asama === 'indi' ? h('button', { type: 'button', class: 'dugme ana', onclick: () => api.guncellemeKur() }, ikon('yenile', 14), t('guncel.kur')) : null,
+        h('button', { type: 'button', class: 'dugme', disabled: g.etkin === false || g.asama === 'kontrol' || g.asama === 'iniyor', onclick: () => api.guncellemeKontrol() }, ikon('yenile', 14), t('guncel.kontrolEt'))
+      ),
+      h('div', { class: 'alan yatay' }, anahtar(s.otomatikGuncelleme, (v) => api.sirketGuncelle({ otomatikGuncelleme: v }), t('guncel.otomatik')), h('span', { class: 'alanIpucu' }, t('guncel.otomatikIpucu')))
+    );
+  }
+
   // GitHub: giriş gh'nin kendi tarayıcı akışıyla yapılır, şifre ya da jeton uygulamaya girmez
   function githubPaneli() {
     const t = depo.t;
@@ -400,6 +436,7 @@ export function ayarlarSayfasi({ git } = {}) {
           h('p', { class: 'ipucu' }, t('motor.gizlilik'))
         ),
         githubPaneli(),
+        guncellemePaneli(),
         h(
           'section',
           { class: 'panel' },

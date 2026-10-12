@@ -9,6 +9,7 @@ import { derle, ajanMetni, sefMetni, oturumArgumanlari, codexArgumanlari, codexK
 import { codexUyarla } from '../cekirdek/durum.js';
 import { sohbetIsle, bekleyenSayisi, terminaleMetin, guvenSorusuMu, duzMetin } from '../cekirdek/sohbet.js';
 import { mcpIsle } from '../cekirdek/mcp.js';
+import { notMetni } from '../cekirdek/surum-notu.js';
 import { codexVarsayilan, motorCoz, motorOrtami } from '../cekirdek/motor.js';
 import { SkillDeposu, skillBaslik, githubCoz, katalogOku } from '../cekirdek/skiller.js';
 import { kod, benzersizKod, turKodu, ccRenk, basHarf } from '../cekirdek/kimlik.js';
@@ -156,6 +157,11 @@ assert.match(codexKancaKomutu('http://127.0.0.1:1/olay/k/e', 'win32'), /^curl\.e
   assert.ok(guvenSorusuMu('claude', duzMetin('\x1b[1m❯ No, exit\r\n  Yes, I trust this folder')));
   assert.ok(!guvenSorusuMu('claude', duzMetin('Do you trust me?')));
 }
+
+// ---------- güncelleme notları ----------
+assert.equal(notMetni('<h2>Yeni</h2><ul><li>Bir &amp; iki</li><li>Üç</li></ul>'), '## Yeni\n- Bir & iki\n- Üç');
+assert.equal(notMetni([{ version: '1', note: '<p>a</p>' }, { version: '2', note: 'b' }]), 'a\n\nb');
+assert.equal(notMetni(null), '');
 
 // ---------- MCP ----------
 {

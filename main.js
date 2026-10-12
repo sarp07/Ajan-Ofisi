@@ -1,5 +1,5 @@
 // Ajan Ofisi ana süreç: pencere, şirket verisi, gömülü Claude Code oturumu, canlı olay alıcısı.
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -16,6 +16,7 @@ import { kabukOrtami, claudeBul, kurulumKomutu, taslakIste, jsonAyikla } from '.
 import { MOTORLAR, codexBul, girisDurumu, girisKomutu, kurulumKomutlari, codexKlasoru, codexModelleri, codexVarsayilan, motorCoz, hazirMi, motorOrtami, codexTaslak, codexAnahtarGirisi } from './cekirdek/motor.js';
 import { AnahtarDeposu } from './cekirdek/anahtarlar.js';
 import { mcpIsle } from './cekirdek/mcp.js';
+import { Guncelleyici } from './cekirdek/guncelleme.js';
 import { testAraclari, TEST_ARAC_ADLARI } from './cekirdek/test-alani.js';
 import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem } from './cekirdek/github.js';
 import { sesListesi, sesUret } from './cekirdek/ses.js';
@@ -52,6 +53,9 @@ let kancaAnahtari = '';
 let sunucuHata = null;
 let kayit = null;
 let oda = null;
+let guncelleyici = null;
+let guncellemePenceresi = null;
+let yenilikler = null;
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'ofis', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -165,6 +169,8 @@ function baslangic() {
     sablonlar: SABLONLAR,
     odaSablonlari: ODA_SABLONLARI,
     oturumlar: oturumlarBilgi(),
+    guncelleme: guncelleyici ? { ...guncelleyici.durum } : null,
+    yenilikler,
     bilgi: {
       surum: app.getVersion(),
       platform: process.platform,
@@ -910,7 +916,12 @@ function ipcKur() {
   };
   const h = (kanal, fn) => ipcMain.handle(kanal, dene(fn));
 
-  h('baslangic', () => baslangic());
+  // "neler yeni" yalnızca bir kez verilir
+  h('baslangic', () => {
+    const b = baslangic();
+    yenilikler = null;
+    return b;
+  });
   // kat verilmezse seçili kat
   const katAnahtari = (kat) => String(kat || depo.veri.sonProje || '');
   h('durum:al', (kat) => {
@@ -955,7 +966,7 @@ function ipcKur() {
   });
 
   h('sirket:guncelle', (yama) => {
-    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku'];
+    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme'];
     const temiz = {};
     for (const k of izinli) if (yama && k in yama) temiz[k] = yama[k];
     if (temiz.beyin) temiz.beyin = { ...depo.veri.beyin, ...temiz.beyin };
@@ -968,6 +979,7 @@ function ipcKur() {
     sirketYayinla();
     // motor ya da giriş yöntemi değişince hangi motorun seçileceği de değişir
     if ('motor' in temiz || 'giris' in temiz) gonder('bilgi', baslangic().bilgi);
+    if ('otomatikGuncelleme' in temiz && guncelleyici) guncelleyici.otomatik(depo.veri.otomatikGuncelleme);
     return gorunum();
   });
   h('sirket:dil', (dil) => {
@@ -1288,6 +1300,31 @@ function ipcKur() {
     return { tamam: true };
   });
   h('veri:ac', () => shell.openPath(app.getPath('userData')));
+  h('guncelleme:durum', () => ({ ...guncelleyici.durum }));
+  h('guncelleme:kontrol', () => guncelleyici.kontrol());
+  h('guncelleme:indir', () => guncelleyici.indir());
+  h('guncelleme:kur', () => ({ tamam: guncelleyici.kur() }));
+  h('guncelleme:sonra', () => {
+    guncelleyici.sonra();
+    guncellemePenceresiniKapat();
+    return { tamam: true };
+  });
+  h('guncelleme:atla', () => {
+    guncelleyici.atla();
+    guncellemePenceresiniKapat();
+    return { tamam: true };
+  });
+  // küçük pencereden "uygulamada aç": ana pencere öne gelir, güncelleme orada gösterilir
+  h('guncelleme:uygulamadaAc', () => {
+    guncellemePenceresiniKapat();
+    if (pencere && !pencere.isDestroyed()) {
+      if (pencere.isMinimized()) pencere.restore();
+      pencere.show();
+      pencere.focus();
+      gonder('guncelleme:goster', { ...guncelleyici.durum });
+    }
+    return { tamam: true };
+  });
   // Yedek: şirket (beyin, katlar, ekipler, kurallar, ayarlar) ve kayıt defterleri tek JSON dosyasında.
   // API anahtarları ve tarayıcı oturumları yedeğe girmez: başka bilgisayarda anlamsızdır ve gizlidir.
   h('yedek:al', async () => {
@@ -1404,6 +1441,51 @@ function menuKur() {
   );
 }
 
+// ---------- güncelleme ----------
+// Uygulama öndeyse güncelleme penceresi içeride açılır. Arkadaysa ekranın sağ üstünde, odağı çalmayan küçük bir pencere belirir.
+function guncellemeDikkat(durum) {
+  // ekran görüntüsü sınamalarında pencere açılmaz, sahte güncelleme denenirken açılır
+  if (SINAMA && !process.env.AJAN_OFIS_GUNCELLEME_SINAMA) return;
+  if (pencere && !pencere.isDestroyed() && pencere.isFocused()) {
+    gonder('guncelleme:goster', durum);
+    return;
+  }
+  if (process.platform === 'darwin' && app.dock) app.dock.bounce('informational');
+  else if (pencere && !pencere.isDestroyed()) pencere.flashFrame(true);
+  if (guncellemePenceresi && !guncellemePenceresi.isDestroyed()) {
+    guncellemePenceresi.webContents.send('guncelleme', durum);
+    guncellemePenceresi.showInactive();
+    return;
+  }
+  const alan = screen.getPrimaryDisplay().workArea;
+  const g = 400;
+  const y = 230;
+  guncellemePenceresi = new BrowserWindow({
+    width: g,
+    height: y,
+    x: alan.x + alan.width - g - 18,
+    y: alan.y + 18,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    backgroundColor: '#171b24',
+    webPreferences: { preload: path.join(KOK, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  guncellemePenceresi.webContents.on('will-navigate', (e) => e.preventDefault());
+  guncellemePenceresi.loadURL('ofis://uygulama/arayuz/guncelleme.html');
+  guncellemePenceresi.once('ready-to-show', () => guncellemePenceresi && guncellemePenceresi.showInactive());
+  guncellemePenceresi.on('closed', () => (guncellemePenceresi = null));
+}
+
+function guncellemePenceresiniKapat() {
+  if (guncellemePenceresi && !guncellemePenceresi.isDestroyed()) guncellemePenceresi.close();
+}
+
 function pencereAc() {
   pencere = new BrowserWindow({
     width: 1500,
@@ -1495,6 +1577,17 @@ if (!app.requestSingleInstanceLock()) {
     const ikon = path.join(KOK, 'arayuz', 'ikon.png');
     if (process.platform === 'darwin' && app.dock && fs.existsSync(ikon) && !app.isPackaged) app.dock.setIcon(nativeImage.createFromPath(ikon));
 
+    guncelleyici = new Guncelleyici({
+      app,
+      dosya: path.join(veri, 'guncelleme.json'),
+      degisti: (d) => {
+        gonder('guncelleme', d);
+        if (guncellemePenceresi && !guncellemePenceresi.isDestroyed()) guncellemePenceresi.webContents.send('guncelleme', d);
+      },
+      dikkat: guncellemeDikkat,
+    });
+    yenilikler = guncelleyici.yenilikler();
+    guncelleyici.baslat({ otomatik: depo.veri.otomatikGuncelleme });
     pencereAc();
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     setInterval(() => {
