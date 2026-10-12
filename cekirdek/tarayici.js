@@ -300,6 +300,31 @@ export class TarayiciOdasi {
     );
   }
 
+  // Açık sohbetin başlığı ve son gelen mesajları. Açık sohbete gelen mesaj hemen okundu sayılır, okunmamış rozeti çıkmaz:
+  // bu yüzden açık sohbet ayrıca buradan okunur. WhatsApp'ta gelen mesajların kimliği "false_" ile başlar.
+  async whatsappAcikSohbet(id) {
+    const wc = this.sekme(id);
+    return wc.executeJavaScript(
+      `(() => {
+        const ana = document.querySelector('#main');
+        if (!ana) return null;
+        const bas = ana.querySelector('header');
+        const baslik = bas ? ((bas.querySelector('span[title]') || {}).title || (bas.querySelector('span[dir="auto"]') || {}).textContent || '') : '';
+        const gelen = [...ana.querySelectorAll('[data-id]')]
+          .filter((m) => /^false_/.test(m.getAttribute('data-id')) || m.querySelector('.message-in') || m.closest('.message-in'))
+          .slice(-5)
+          .map((m) => {
+            const k = m.querySelector('[data-pre-plain-text]');
+            const yazi = (m.querySelector('.selectable-text') || k || {}).innerText || '';
+            return { id: m.getAttribute('data-id'), metin: yazi.trim() };
+          })
+          .filter((x) => x.metin);
+        return { baslik: baslik.trim(), gelen };
+      })()`,
+      true
+    );
+  }
+
   // Bir sohbeti açar ve mesaj gönderir
   async whatsappYaz(id, sohbet, metin) {
     const wc = this.sekme(id);

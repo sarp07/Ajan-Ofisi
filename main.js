@@ -818,21 +818,35 @@ function sahipSohbetiMi(baslik) {
   return String(baslik).trim().toLowerCase() === sahip.trim().toLowerCase();
 }
 
-const whatsappSon = new Map(); // hesap kimliği -> son iletilen mesaj izi
+const whatsappSon = new Map(); // hesap kimliği -> görülmüş mesaj kimlikleri
 async function whatsappIzle() {
   try {
     const beyin = katlar.get('beyin');
     if (beyin && beyin.oturum.acik && depo.veri.beyin.whatsapp && oda) {
       for (const h of tumHesaplar().filter((x) => x.platform === 'whatsapp' && oda.sekmeler.has(x.id))) {
-        const sohbetler = await oda.whatsappSohbetler(h.id).catch(() => []);
-        const s = sohbetler.find((x) => sahipSohbetiMi(x.baslik));
-        if (!s) continue;
-        const iz = s.baslik + '|' + s.onizleme;
-        const once = whatsappSon.get(h.id);
-        whatsappSon.set(h.id, iz);
-        // ilk bakışta eski mesajı yeniden iletme; yalnızca okunmamış ve yeni olanı ilet
-        if (once === undefined || once === iz || !s.okunmamis || !s.onizleme) continue;
-        await oturumaYaz(beyin, `[WhatsApp · ${s.baslik}] ${s.onizleme}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${s.baslik}" olarak gönder.)`);
+        const iletilen = whatsappSon.get(h.id);
+        const ilkBakis = !iletilen;
+        const gorulen = iletilen || new Set();
+        whatsappSon.set(h.id, gorulen);
+        const yeni = [];
+        let baslik = '';
+        // 1) Sahibin sohbeti açıksa: gelen mesajları kimliğiyle izle (açık sohbette okunmamış rozeti çıkmaz)
+        const acik = await oda.whatsappAcikSohbet(h.id).catch(() => null);
+        if (acik && sahipSohbetiMi(acik.baslik)) {
+          baslik = acik.baslik;
+          for (const m of acik.gelen) if (!gorulen.has(m.id)) (gorulen.add(m.id), yeni.push(m.metin));
+        } else {
+          // 2) Kapalıysa: sohbet listesinde okunmamış rozeti ve son mesaj önizlemesi
+          const s = (await oda.whatsappSohbetler(h.id).catch(() => [])).find((x) => sahipSohbetiMi(x.baslik));
+          if (s && s.okunmamis && s.onizleme) {
+            baslik = s.baslik;
+            const iz = 'liste:' + s.onizleme;
+            if (!gorulen.has(iz)) (gorulen.add(iz), yeni.push(s.onizleme));
+          }
+        }
+        // ilk bakışta eski mesajları yeniden iletme, yalnızca hafızaya al
+        if (ilkBakis || !yeni.length) continue;
+        await oturumaYaz(beyin, `[WhatsApp · ${baslik}] ${yeni.join('\n')}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${baslik}" olarak gönder. Sayfayı ayrıca okumana gerek yok: yeni mesajlar sana kendiliğinden gelir.)`);
       }
     }
   } catch {
