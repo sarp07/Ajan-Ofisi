@@ -70,7 +70,60 @@ export function ofisSayfasi({ git }) {
   let bekleyenEkler = [];
   const ekKap = h('div', { class: 'ekKap', hidden: true });
   const ekDugme = h('button', { type: 'button', class: 'sohbetEk', hidden: true, onclick: () => dosyaEkle() }, ikon('arti', 16));
-  const sohbet = h('section', { class: 'sohbet' }, sohbetBas, sohbetListe, ekKap, h('div', { class: 'sohbetYaz' }, ekDugme, sohbetGiris, sohbetGonder));
+  // konuşarak yazma: bas, konuş, tekrar bas. Kayıt yazıya çevrilip gönderilir.
+  const mikDugme = h('button', { type: 'button', class: 'sohbetEk mik', onclick: () => mikrofon() }, ikon('mik', 16));
+  const sohbet = h('section', { class: 'sohbet' }, sohbetBas, sohbetListe, ekKap, h('div', { class: 'sohbetYaz' }, ekDugme, sohbetGiris, mikDugme, sohbetGonder));
+  let kayit = null; // { kaydedici, parcalar, akim, bas, sayac }
+  async function mikrofon() {
+    const tt = depo.t;
+    if (kayit) return kayit.kaydedici.stop();
+    if (!depo.oturum.acik || depo.oturum.giris) return bildir(tt('sohbet.kapali'), true);
+    const v = await api.sesYaziyaVar();
+    if (!v || !v.var) return bildir(tt('ses.yaziyaAnahtarYok'), true);
+    let akim;
+    try {
+      akim = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return bildir(tt('ses.mikIzin'), true);
+    }
+    const tur = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((x) => window.MediaRecorder && MediaRecorder.isTypeSupported(x)) || '';
+    const kaydedici = new MediaRecorder(akim, tur ? { mimeType: tur } : undefined);
+    kayit = { kaydedici, parcalar: [], akim, bas: Date.now() };
+    kaydedici.ondataavailable = (e) => e.data.size && kayit.parcalar.push(e.data);
+    kaydedici.onstop = async () => {
+      const k = kayit;
+      kayit = null;
+      clearInterval(k.sayac);
+      k.akim.getTracks().forEach((x) => x.stop());
+      mikCiz(true);
+      const blob = new Blob(k.parcalar, { type: kaydedici.mimeType || 'audio/webm' });
+      const veri = await new Promise((coz) => {
+        const o = new FileReader();
+        o.onload = () => coz(String(o.result).split(',')[1] || '');
+        o.readAsDataURL(blob);
+      });
+      const r = await api.sesYaziya(veri, blob.type);
+      mikCiz(false);
+      if (!r || r.hata) return bildir(hataMetni(r), true);
+      if (!r.metin) return bildir(tt('ses.duyulmadi'), true);
+      sohbetGiris.value = (sohbetGiris.value ? sohbetGiris.value + ' ' : '') + r.metin;
+      boyutla();
+      sohbetYolla();
+    };
+    kaydedici.start();
+    kayit.sayac = setInterval(() => mikCiz(false), 500);
+    mikCiz(false);
+  }
+  function mikCiz(ceviriyor) {
+    const tt = depo.t;
+    mikDugme.classList.toggle('kayit', !!kayit);
+    mikDugme.classList.toggle('ceviriyor', !!ceviriyor);
+    mikDugme.disabled = !!ceviriyor;
+    const sn = kayit ? Math.floor((Date.now() - kayit.bas) / 1000) : 0;
+    mikDugme.title = ceviriyor ? tt('ses.ceviriyor') : kayit ? tt('ses.dinliyor', { x: sn }) : tt('ses.konus');
+    mikDugme.setAttribute('aria-label', mikDugme.title);
+    doldur(mikDugme, ceviriyor ? h('span', { class: 'donen' }) : kayit ? h('span', { class: 'mikSure' }, `${Math.floor(sn / 60)}:${String(sn % 60).padStart(2, '0')}`) : ikon('mik', 16));
+  }
   const termAlan = h('div', { class: 'termAlan' }, termKap, termBos);
   const dockGovde = h('div', { class: 'dockGovde' }, termAlan, sohbet);
   const dock = h('section', { class: 'dock' }, dockBas, dockGovde);
@@ -853,6 +906,10 @@ export function ofisSayfasi({ git }) {
     sohbetGonder.disabled = !acik;
     ekDugme.hidden = !ozelMi();
     ekDugme.disabled = !acik;
+    if (!kayit) {
+      mikDugme.disabled = !acik;
+      mikDugme.title = tt('ses.konus');
+    }
     ekDugme.title = tt('oda.ekle');
     ekDugme.setAttribute('aria-label', tt('oda.ekle'));
     sohbetGiris.placeholder = acik ? tt('sohbet.yerTutucu', { x: muhatap() }) : tt('sohbet.kapaliYer');

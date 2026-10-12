@@ -83,3 +83,28 @@ export async function sesUret({ tur, ses, metin, anahtar }) {
   const tampon = Buffer.from(await r.arrayBuffer());
   return { veri: tampon.toString('base64'), mime: 'audio/mpeg' };
 }
+
+// Sesten yazıya: beyne konuşarak yazmak için. OpenAI anahtarı varsa OpenAI, yoksa ElevenLabs kullanılır.
+// ses: kayıt (Buffer), mime: kaydın türü. Döner: yazı.
+export async function yaziyaCevir({ ses, mime = 'audio/webm', dil = 'tr', openaiAnahtar = '', elevenAnahtar = '' }) {
+  const uzanti = mime.includes('mp4') ? 'mp4' : mime.includes('ogg') ? 'ogg' : 'webm';
+  const form = new FormData();
+  const dosya = new Blob([ses], { type: mime });
+  if (openaiAnahtar) {
+    form.append('file', dosya, 'konusma.' + uzanti);
+    form.append('model', 'gpt-4o-mini-transcribe');
+    form.append('language', dil);
+    const r = await istek('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { authorization: 'Bearer ' + openaiAnahtar }, body: form });
+    const j = await r.json();
+    return String(j.text || '').trim();
+  }
+  if (elevenAnahtar) {
+    form.append('file', dosya, 'konusma.' + uzanti);
+    form.append('model_id', 'scribe_v1');
+    form.append('language_code', dil === 'en' ? 'eng' : 'tur');
+    const r = await istek(`${ELEVEN}/speech-to-text`, { method: 'POST', headers: { 'xi-api-key': elevenAnahtar }, body: form });
+    const j = await r.json();
+    return String(j.text || '').trim();
+  }
+  throw new Error('Sesle yazmak için Ayarlar\'dan OpenAI ya da ElevenLabs anahtarı ekle');
+}

@@ -1935,6 +1935,25 @@ code.yol {
   cursor: default;
 }
 
+.sohbetEk.mik.kayit {
+  border-color: var(--kotu);
+  color: #fff;
+  background: var(--kotu);
+  animation: nabizKirmizi 1.2s ease-in-out infinite;
+}
+
+.mikSure {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes nabizKirmizi {
+  50% {
+    box-shadow: 0 0 0 6px rgba(229, 72, 77, 0.22);
+  }
+}
+
 .sohbet.birak {
   outline: 2px dashed var(--vurgu);
   outline-offset: -8px;

@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('ofis', {
   motorAnahtar: cagri('motor:anahtar'),
   sesListe: cagri('ses:liste'),
   sesUret: cagri('ses:uret'),
+  sesYaziya: cagri('ses:yaziya'),
+  sesYaziyaVar: cagri('ses:yaziyaVar'),
   veriAc: cagri('veri:ac'),
   baglantiDurum: cagri('baglanti:durum'),
   testDurum: cagri('test:durum'),

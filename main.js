@@ -19,7 +19,7 @@ import { mcpIsle } from './cekirdek/mcp.js';
 import { Guncelleyici } from './cekirdek/guncelleme.js';
 import { testAraclari, TEST_ARAC_ADLARI, testDurumu, iosAc, iosKapat, iosGoruntu, androidBaslat, androidGoruntu } from './cekirdek/test-alani.js';
 import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem } from './cekirdek/github.js';
-import { sesListesi, sesUret } from './cekirdek/ses.js';
+import { sesListesi, sesUret, yaziyaCevir } from './cekirdek/ses.js';
 import { beyinAraclari, beyinTalimati, MCP_ADI } from './cekirdek/beyin.js';
 import { sablonBul } from './cekirdek/sablonlar.js';
 import { ODA_SABLONLARI, odaSablonu } from './cekirdek/odalar.js';
@@ -1316,6 +1316,17 @@ function ipcKur() {
       return { hata: 'ses', ayrinti: String(e.message || e) };
     }
   });
+  // konuşarak yazma: arayüz kaydı gönderir, yazıya çevrilmiş metin döner
+  h('ses:yaziya', async (veri, mime) => {
+    try {
+      const ses = Buffer.from(String(veri || ''), 'base64');
+      if (!ses.length || ses.length > 25 * 1024 * 1024) return { hata: 'genel' };
+      return { tamam: true, metin: await yaziyaCevir({ ses, mime: String(mime || 'audio/webm'), dil: depo.veri.dil, openaiAnahtar: anahtarlar.al('codex'), elevenAnahtar: anahtarlar.al('elevenlabs') }) };
+    } catch (e) {
+      return { hata: 'ses', ayrinti: String(e.message || e) };
+    }
+  });
+  h('ses:yaziyaVar', () => ({ var: anahtarlar.var('codex') || anahtarlar.var('elevenlabs') }));
   h('motor:anahtar', ({ motor, deger }) => {
     if (motor === 'elevenlabs') {
       anahtarlar.koy('elevenlabs', deger);

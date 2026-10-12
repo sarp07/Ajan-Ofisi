@@ -75,8 +75,11 @@
         "NSDownloadsFolderUsageDescription": "Your team works on the files of the project folder you choose.",
         "NSRemovableVolumesUsageDescription": "Your team works on the files of the project folder you choose.",
         "NSNetworkVolumesUsageDescription": "Your team works on the files of the project folder you choose.",
-        "NSAppleEventsUsageDescription": "Your team may run scripts that control other apps when you ask for it."
-      }
+        "NSAppleEventsUsageDescription": "Your team may run scripts that control other apps when you ask for it.",
+        "NSMicrophoneUsageDescription": "Talk to the brain by voice. Audio is sent only to the speech service you chose."
+      },
+      "entitlements": "paket/entitlements.mac.plist",
+      "entitlementsInherit": "paket/entitlements.mac.plist"
     },
     "win": {
       "icon": "arayuz/ikon.png",
