@@ -1,7 +1,7 @@
 {
   "name": "ajan-ofis",
   "productName": "Ajan Ofisi",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Claude Code ekibini canlı bir ofis olarak gösteren ve yöneten masaüstü uygulaması",
   "type": "module",
   "main": "main.js",
