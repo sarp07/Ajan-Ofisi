@@ -4672,3 +4672,59 @@ body.guncelKucuk .guncelDugmeler {
 .cevrimdisiKutu > .dugme {
   align-self: flex-end;
 }
+
+/* ---------- sürüklenebilir ayırıcılar ---------- */
+.ayirici {
+  flex: none;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  transition: background 0.15s ease-out;
+}
+
+.ayirici.yatay {
+  height: 6px;
+  margin: -3px 0;
+  cursor: row-resize;
+}
+
+.ayirici.dikey {
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+}
+
+.ayirici:hover,
+.ayirici:focus-visible {
+  background: rgba(23, 184, 166, 0.35);
+  outline: none;
+}
+
+body.surukleniyor {
+  user-select: none;
+}
+
+body.surukleY,
+body.surukleY * {
+  cursor: row-resize !important;
+}
+
+body.surukleX,
+body.surukleX * {
+  cursor: col-resize !important;
+}
+
+/* özel odada terminal yok, sohbet tam genişlik: ayırıcılar gizli */
+.ofisSayfa.ozelModu .ayirici,
+.ofisSayfa.beyinModu > .ayirici.dikey,
+.ofisSayfa.kisiselModu .ayirici {
+  display: none;
+}
+
+.ofisSayfa.ozelModu .sohbet {
+  width: min(860px, 100%) !important;
+}
+
+.ofisSayfa.ozelModu .dock {
+  height: auto !important;
+}

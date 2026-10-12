@@ -1,5 +1,5 @@
 // Ofis sayfası: kat şeridi, canlı sahne, katın terminali ve şefle konuşma paneli, ekip ve görev paneli.
-import { h, doldur, ikon, kopyala, saatYaz, mdMetin } from '../dom.js';
+import { h, doldur, ikon, kopyala, saatYaz, mdMetin, ayirici } from '../dom.js';
 import { depo, api, dinle, bildir, hataMetni, kisiBilgi, seciliKat, terminalKati, gorunumSec } from '../depo.js';
 import { Sahne } from '../sahne.js';
 import { sessizMi, sessizYap } from '../ses.js';
@@ -71,7 +71,9 @@ export function ofisSayfasi({ git }) {
   const ekKap = h('div', { class: 'ekKap', hidden: true });
   const ekDugme = h('button', { type: 'button', class: 'sohbetEk', hidden: true, onclick: () => dosyaEkle() }, ikon('arti', 16));
   const sohbet = h('section', { class: 'sohbet' }, sohbetBas, sohbetListe, ekKap, h('div', { class: 'sohbetYaz' }, ekDugme, sohbetGiris, sohbetGonder));
-  const dock = h('section', { class: 'dock' }, dockBas, h('div', { class: 'dockGovde' }, h('div', { class: 'termAlan' }, termKap, termBos), sohbet));
+  const termAlan = h('div', { class: 'termAlan' }, termKap, termBos);
+  const dockGovde = h('div', { class: 'dockGovde' }, termAlan, sohbet);
+  const dock = h('section', { class: 'dock' }, dockBas, dockGovde);
 
   // kat şeridi: her proje bir kat
   const katSerit = h('nav', { class: 'katSerit', 'aria-label': 'Katlar' });
@@ -90,7 +92,59 @@ export function ofisSayfasi({ git }) {
     h('section', { class: 'bolum akisBolum' }, h('h2', null, yanBaslik.akis), akisEl)
   );
 
-  const kok = h('div', { class: 'ofisSayfa' }, h('div', { class: 'ofisSol' }, katSerit, sahneKap, dock), yan);
+  // ---------- elle ayarlanan düzen ----------
+  // Sahne ile alt bölüm, terminal ile sohbet, ana alan ile yan panel arasındaki ayırıcılar. Ölçüler bu bilgisayarda hatırlanır.
+  const DUZEN = 'ofis.duzen';
+  let duzen = {};
+  try {
+    duzen = JSON.parse(localStorage.getItem(DUZEN) || '{}') || {};
+  } catch {
+    duzen = {};
+  }
+  const duzenKaydet = () => {
+    try {
+      localStorage.setItem(DUZEN, JSON.stringify(duzen));
+    } catch {
+      /* depolama kapalı */
+    }
+  };
+  const ofisSol = h('div', { class: 'ofisSol' });
+  const duzenUygula = () => {
+    dock.style.height = duzen.dock ? duzen.dock + 'px' : '';
+    sohbet.style.width = duzen.sohbet ? duzen.sohbet + 'px' : '';
+    yan.style.width = duzen.yan ? duzen.yan + 'px' : '';
+    requestAnimationFrame(sigdirTerm);
+  };
+  const sinirla = (x, alt, ust) => Math.round(Math.max(alt, Math.min(ust, x)));
+  let ilk = 0;
+  const dockAyirici = ayirici({
+    yon: 'yatay',
+    etiket: 'dock',
+    basla: () => (ilk = dock.getBoundingClientRect().height),
+    ayarla: (f) => ((duzen.dock = sinirla(ilk - f, 150, ofisSol.clientHeight - 160)), duzenUygula()),
+    bitir: duzenKaydet,
+    sifirla: () => (delete duzen.dock, duzenKaydet(), duzenUygula()),
+  });
+  const sohbetAyirici = ayirici({
+    yon: 'dikey',
+    etiket: 'sohbet',
+    basla: () => (ilk = sohbet.getBoundingClientRect().width),
+    ayarla: (f) => ((duzen.sohbet = sinirla(ilk - f, 260, dockGovde.clientWidth - 240)), duzenUygula()),
+    bitir: duzenKaydet,
+    sifirla: () => (delete duzen.sohbet, duzenKaydet(), duzenUygula()),
+  });
+  const yanAyirici = ayirici({
+    yon: 'dikey',
+    etiket: 'yan',
+    basla: () => (ilk = yan.getBoundingClientRect().width),
+    ayarla: (f) => ((duzen.yan = sinirla(ilk - f, 220, 560)), duzenUygula()),
+    bitir: duzenKaydet,
+    sifirla: () => (delete duzen.yan, duzenKaydet(), duzenUygula()),
+  });
+  dockGovde.insertBefore(sohbetAyirici, sohbet);
+  ofisSol.append(katSerit, sahneKap, dockAyirici, dock);
+  const kok = h('div', { class: 'ofisSayfa' }, ofisSol, yanAyirici, yan);
+  duzenUygula();
 
   const sahne = new Sahne(tuval, {
     t: depo.t,
@@ -321,6 +375,10 @@ export function ofisSayfasi({ git }) {
             onclick: () => {
               dockBuyuk = !dockBuyuk;
               kok.classList.toggle('dockBuyuk', dockBuyuk);
+              // büyüt/küçült düğmesi elle verilen yüksekliği sıfırlar
+              delete duzen.dock;
+              duzenKaydet();
+              duzenUygula();
               dockCiz();
               requestAnimationFrame(sigdirTerm);
             },

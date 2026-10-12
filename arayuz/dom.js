@@ -353,3 +353,39 @@ export function mdMetin(metin) {
   paragrafBitir();
   return kap;
 }
+
+// Sürüklenebilir ayırıcı: iki bölümün arasına konur, sürükleyince ölçü değişir, çift tıklayınca varsayılana döner.
+// yon: 'yatay' (yükseklik değişir) ya da 'dikey' (genişlik değişir). ayarla(fark) sürükleme boyunca çağrılır.
+export function ayirici({ yon, basla, ayarla, bitir, sifirla, etiket }) {
+  const el = h('div', { class: 'ayirici ' + yon, role: 'separator', 'aria-orientation': yon === 'yatay' ? 'horizontal' : 'vertical', 'aria-label': etiket || '', tabindex: '0' });
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    const bas = yon === 'yatay' ? e.clientY : e.clientX;
+    basla && basla();
+    document.body.classList.add('surukleniyor', yon === 'yatay' ? 'surukleY' : 'surukleX');
+    const hareket = (ev) => ayarla((yon === 'yatay' ? ev.clientY : ev.clientX) - bas);
+    const birak = () => {
+      el.removeEventListener('pointermove', hareket);
+      el.removeEventListener('pointerup', birak);
+      el.removeEventListener('pointercancel', birak);
+      document.body.classList.remove('surukleniyor', 'surukleY', 'surukleX');
+      bitir && bitir();
+    };
+    el.addEventListener('pointermove', hareket);
+    el.addEventListener('pointerup', birak);
+    el.addEventListener('pointercancel', birak);
+  });
+  el.addEventListener('dblclick', () => sifirla && sifirla());
+  // klavyeyle de ayarlanabilir
+  el.addEventListener('keydown', (e) => {
+    const adim = e.shiftKey ? 40 : 12;
+    const k = { ArrowUp: -adim, ArrowLeft: -adim, ArrowDown: adim, ArrowRight: adim }[e.key];
+    if (k === undefined) return;
+    e.preventDefault();
+    basla && basla();
+    ayarla(k);
+    bitir && bitir();
+  });
+  return el;
+}
