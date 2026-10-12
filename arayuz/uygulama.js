@@ -1,6 +1,6 @@
 // Uygulama kabuğu: üst çubuk, sol gezinme ve sayfalar.
 import { h, doldur, ikon } from './dom.js';
-import { depo, api, dinle, yukle } from './depo.js';
+import { depo, api, dinle, yukle, bildir } from './depo.js';
 import { ofisSayfasi } from './sayfa/ofis.js';
 import { ekipSayfasi } from './sayfa/ekip.js';
 import { projelerSayfasi } from './sayfa/projeler.js';
@@ -10,6 +10,7 @@ import { ayarlarSayfasi } from './sayfa/ayarlar.js';
 import { tarayiciSayfasi } from './sayfa/tarayici.js';
 import { kurulum } from './sayfa/kurulum.js';
 import { guncellemeKur } from './guncelleme.js';
+import { cevrimdisiKur } from './cevrimdisi.js';
 
 const SAYFALAR = [
   ['ofis', 'ofis', ofisSayfasi],
@@ -136,6 +137,7 @@ async function basla() {
   guncelKap.className = 'guncelKap';
   document.body.append(guncelKap);
   guncellemeKur({ api, depo, ustRozetKap: guncelKap });
+  cevrimdisiKur({ api, depo, bildir });
   if (!depo.sirket.kurulumBitti) {
     document.body.append(kurulum({ bitti: () => git('ofis') }));
   }

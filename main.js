@@ -1,5 +1,5 @@
 // Ajan Ofisi ana süreç: pencere, şirket verisi, gömülü Claude Code oturumu, canlı olay alıcısı.
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen, net } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -1300,6 +1300,7 @@ function ipcKur() {
     return { tamam: true };
   });
   h('veri:ac', () => shell.openPath(app.getPath('userData')));
+  h('baglanti:durum', () => ({ cevrimici }));
   h('guncelleme:durum', () => ({ ...guncelleyici.durum }));
   h('guncelleme:kontrol', () => guncelleyici.kontrol());
   h('guncelleme:indir', () => guncelleyici.indir());
@@ -1439,6 +1440,34 @@ function menuKur() {
       { role: 'windowMenu' },
     ])
   );
+}
+
+// ---------- internet bağlantısı ----------
+// Ağ kartının açık olması yetmez: küçük bir istekle gerçekten dışarı çıkılabiliyor mu bakılır.
+// Bağlantı yokken 3 saniyede, varken 10 saniyede bir kontrol edilir. Durum değişince arayüze bildirilir.
+let cevrimici = true;
+async function baglantiDene() {
+  if (!net.isOnline()) return false;
+  const kontrol = new AbortController();
+  const z = setTimeout(() => kontrol.abort(), 5000);
+  try {
+    const r = await net.fetch('https://cloudflare.com/cdn-cgi/trace', { method: 'HEAD', signal: kontrol.signal, cache: 'no-store' });
+    return r.ok || r.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(z);
+  }
+}
+
+async function baglantiIzle() {
+  // geliştirme aracı: AJAN_OFIS_CEVRIMDISI=1 ise bağlantı yok sayılır (oyunu denemek için)
+  const simdi = process.env.AJAN_OFIS_CEVRIMDISI ? false : await baglantiDene();
+  if (simdi !== cevrimici) {
+    cevrimici = simdi;
+    gonder('baglanti', { cevrimici });
+  }
+  setTimeout(baglantiIzle, cevrimici ? 10000 : 3000);
 }
 
 // ---------- güncelleme ----------
@@ -1589,6 +1618,7 @@ if (!app.requestSingleInstanceLock()) {
     yenilikler = guncelleyici.yenilikler();
     guncelleyici.baslat({ otomatik: depo.veri.otomatikGuncelleme });
     pencereAc();
+    baglantiIzle();
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     setInterval(() => {
       for (const k of katlar.values()) if (k.oturum.acik) durumGonder(k, true);

@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('ofis', {
   sesListe: cagri('ses:liste'),
   sesUret: cagri('ses:uret'),
   veriAc: cagri('veri:ac'),
+  baglantiDurum: cagri('baglanti:durum'),
+  baglantiDinle: dinle('baglanti'),
   guncellemeDurum: cagri('guncelleme:durum'),
   guncellemeKontrol: cagri('guncelleme:kontrol'),
   guncellemeIndir: cagri('guncelleme:indir'),

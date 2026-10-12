@@ -4587,3 +4587,77 @@ body.guncelKucuk .guncelDugmeler {
   margin-top: auto;
   justify-content: flex-start;
 }
+
+/* ---------- internet yok ---------- */
+.cevrimdisi {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 10, 14, 0.7);
+  backdrop-filter: blur(4px);
+  animation: belir 0.25s ease-out;
+}
+
+.cevrimdisiKutu {
+  width: min(700px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--cizgi2);
+  background: var(--panel);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.cevrimdisiBas {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cevrimdisiBas h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.cevrimdisiBas p {
+  margin: 2px 0 0;
+  color: var(--soluk);
+  font-size: 12.5px;
+  max-width: 60ch;
+}
+
+.cevrimdisiSimge {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(242, 169, 59, 0.14);
+  color: var(--uyari);
+}
+
+.kosuTuval {
+  width: 100%;
+  aspect-ratio: 640 / 180;
+  border-radius: 10px;
+  background: var(--zemin);
+  border: 1px solid var(--cizgi);
+  cursor: pointer;
+  image-rendering: pixelated;
+}
+
+.cevrimdisiIpucu {
+  margin: 0;
+  color: var(--sonuk);
+  font-size: 12px;
+}
+
+.cevrimdisiKutu > .dugme {
+  align-self: flex-end;
+}
