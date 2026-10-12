@@ -208,6 +208,19 @@ function projeNormalle(p, kimlikler, sefSablon) {
       }))
       .filter((x) => x.ad)
       .slice(0, 30),
+    // WhatsApp kişileri: sahibin bu proje için eklediği insanlar (eş, testçi, müşteri). Beyin onlarla yalnızca bu proje
+    // hakkında konuşur. tanitildi: tanışma mesajı gönderildi mi.
+    kisiler: (Array.isArray(ham.kisiler) ? ham.kisiler : [])
+      .filter((x) => x && typeof x === 'object')
+      .map((x) => ({
+        id: typeof x.id === 'string' && /^[a-z0-9]{6,20}$/.test(x.id) ? x.id : kimlik(),
+        ad: metin(x.ad, 40).trim(),
+        numara: metin(x.numara, 30).replace(/[^\d+ ]/g, '').trim(),
+        rol: metin(x.rol, 60).trim(),
+        tanitildi: !!x.tanitildi,
+      }))
+      .filter((x) => x.ad && x.numara.replace(/\D/g, '').length >= 7)
+      .slice(0, 20),
     test: {
       komut: metin(test.komut, 300).trim(),
       adres: metin(test.adres, 300).trim(),

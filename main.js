@@ -603,8 +603,20 @@ const beyinIslemleri = {
         ekip: p.ajanlar.map((a) => (a.unvan ? `${a.ad} (${a.unvan})` : a.ad)),
         oturum_acik: !!(k && k.oturum.acik),
         bekleyen: k ? bekleyenSayisi(k.sohbet) : 0,
+        kisiler: (p.kisiler || []).map((x) => `${x.ad}${x.rol ? ' (' + x.rol + ')' : ''}`),
       };
     }),
+  kisiEkle: async (katId, { ad, numara, rol }) => {
+    const p = depo.proje(katId);
+    if (!p) throw new Error('Kat bulunamadı: ' + katId);
+    if (rakamlar(numara).length < 7) throw new Error('Numara ülke koduyla yazılmalı, ör. +90 5xx xxx xx xx');
+    if (projeKisisi(numara)) throw new Error('Bu numara zaten bir projeye kayıtlı.');
+    depo.projeKaydet({ id: p.id, kisiler: [...(p.kisiler || []), { ad, numara, rol }] });
+    gonder('sirket', gorunum());
+    await kisileriTanit();
+    const k = (depo.proje(p.id).kisiler || []).find((x) => rakamlar(x.numara) === rakamlar(numara));
+    return k && k.tanitildi ? `${ad} eklendi ve tanışma mesajı gönderildi.` : `${ad} eklendi. WhatsApp bağlı olmadığı için tanışma mesajı bağlantı gelince gidecek.`;
+  },
   katKlasoru: (id) => {
     const p = depo.proje(id);
     if (!p) throw new Error('Kat bulunamadı: ' + id);
@@ -909,9 +921,43 @@ function sahipNumarasiMi(numara) {
   return sahip.length >= 7 && rakamlar(numara).slice(-10) === sahip.slice(-10);
 }
 
+// Projeye eklenmiş kişi: numarası eşleşen ilk kayıt (proje bilgisiyle)
+function projeKisisi(numara) {
+  const r = rakamlar(numara).slice(-10);
+  if (r.length < 7) return null;
+  for (const p of depo.veri.projeler) {
+    const k = (p.kisiler || []).find((x) => rakamlar(x.numara).slice(-10) === r);
+    if (k) return { ...k, projeId: p.id, proje: p.ad };
+  }
+  return null;
+}
+
+// Yeni eklenen kişilere tanışma mesajı: yapay zekâ kullanılmaz, sabit bir metin gider
+const TANISMA = {
+  tr: (b, k, p) => `Merhaba ${k.ad}, ben ${b.ad}. ${b.sahip || 'Sahibimin'}${b.sahip ? '\'ın' : ''} şirketinde yöneticiyim. ${p} uygulaması için benimle buradan iletişime geçebilirsin: gördüğün sorunları, aklına gelen önerileri bana yazman yeterli, ben ilgilenirim.`,
+  en: (b, k, p) => `Hi ${k.ad}, I'm ${b.ad}, a manager at ${b.sahip ? b.sahip + "'s" : 'the'} company. You can reach me here about the ${p} app: just write me any problems you see or ideas you have and I'll take care of them.`,
+};
+async function kisileriTanit() {
+  if (!whatsapp || whatsapp.durum.baglanti !== 'bagli') return;
+  for (const p of depo.veri.projeler) {
+    for (const k of (p.kisiler || []).filter((x) => !x.tanitildi)) {
+      try {
+        await whatsapp.gonder(k.numara, (TANISMA[depo.veri.dil] || TANISMA.tr)(depo.veri.beyin, k, p.ad));
+        const guncel = depo.proje(p.id);
+        depo.projeKaydet({ id: p.id, kisiler: guncel.kisiler.map((x) => (x.id === k.id ? { ...x, tanitildi: true } : x)) });
+        gonder('sirket', gorunum());
+      } catch (e) {
+        gunluk('tanışma mesajı gönderilemedi', k.ad, String(e.message || e));
+      }
+    }
+  }
+}
+
 let whatsapp = null;
 async function whatsappMesaji({ numara, metin, ses }) {
-  if (!sahipNumarasiMi(numara)) return; // başkalarının mesajları beyne gitmez
+  const sahip = sahipNumarasiMi(numara);
+  const kisi = sahip ? null : projeKisisi(numara);
+  if (!sahip && !kisi) return; // tanınmayan numaraların mesajları beyne gitmez
   let yazi = metin;
   if (ses) {
     try {
@@ -928,7 +974,10 @@ async function whatsappMesaji({ numara, metin, ses }) {
     if (r && r.hata && r.hata !== 'acik') return;
     gonder('sirket', gorunum());
   }
-  oturumaYaz(beyin, `[WhatsApp · ${depo.veri.beyin.sahip || 'Sahip'}] ${yazi}\n(Sahibin kendi numarasından geldi, kimliği WhatsApp doğruladı. Cevabını whatsapp_yaz ile gönder.)`).catch(() => {});
+  const metinBeyne = sahip
+    ? `[WhatsApp · ${depo.veri.beyin.sahip || 'Sahip'}] ${yazi}\n(Sahibin kendi numarasından geldi, kimliği WhatsApp doğruladı. Cevabını whatsapp_yaz ile gönder.)`
+    : `[WhatsApp · Kişi: ${kisi.ad} (${kisi.proje}${kisi.rol ? ', ' + kisi.rol : ''})] ${yazi}\n(Sahip değil; sahibin ${kisi.proje} projesine eklediği kişi. Yalnızca ${kisi.proje} uygulaması hakkında konuş, başka bilgi verme. Cevabı whatsapp_yaz ile numara "${kisi.numara}" olarak gönder, sonra sahibe kısaca "${kisi.ad} şunu yazdı" diye bildir.)`;
+  oturumaYaz(beyin, metinBeyne).catch(() => {});
 }
 
 // ---------- tarayıcı odası ----------
@@ -1015,7 +1064,7 @@ function tarayiciIslemleri(kapsam) {
       const kime = hedef || sahip;
       if (!kime) throw new Error('Sahibin WhatsApp numarası Ayarlar > Beyin bölümünde girilmemiş.');
       // sahibin kendi numarası dışındaki herkese yazmak sahibin onayına bağlıdır
-      if (!sahipNumarasiMi(kime) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
+      if (!sahipNumarasiMi(kime) && !projeKisisi(kime) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
       await whatsapp.gonder(kime, metin);
       return 'Mesaj gönderildi.';
     },
@@ -1241,6 +1290,7 @@ function ipcKur() {
     const proje = depo.projeKaydet(t);
     if (!depo.veri.sonProje) depo.guncelle({ sonProje: proje.id });
     gonder('sirket', gorunum());
+    kisileriTanit().catch(() => {});
     return { tamam: true, proje };
   });
   // Yalnızca uygulamadaki kayıt silinir. Klasöre ve içindeki dosyalara dokunulmaz.
@@ -1856,7 +1906,15 @@ if (!app.requestSingleInstanceLock()) {
     guncelleyici.baslat({ otomatik: depo.veri.otomatikGuncelleme });
     pencereAc();
     baglantiIzle();
-    whatsapp = new WhatsappBaglantisi({ klasor: path.join(app.getPath('userData'), 'whatsapp'), degisti: (d) => gonder('whatsapp', d), mesaj: (m) => whatsappMesaji(m).catch(() => {}) });
+    whatsapp = new WhatsappBaglantisi({
+      klasor: path.join(app.getPath('userData'), 'whatsapp'),
+      degisti: (d) => {
+        gonder('whatsapp', d);
+        // bağlantı gelince tanıtılmamış kişilere tanışma mesajı gider
+        if (d.baglanti === 'bagli') kisileriTanit().catch(() => {});
+      },
+      mesaj: (m) => whatsappMesaji(m).catch((e) => gunluk('whatsapp mesajı işlenemedi', e)),
+    });
     if (whatsapp.kayitliMi()) whatsapp.baslat().catch(() => {});
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     setInterval(() => {

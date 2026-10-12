@@ -343,6 +343,7 @@ a:hover {
 }
 
 input[type='text'],
+input[type='tel'],
 input[type='password'],
 textarea,
 select {
@@ -361,6 +362,7 @@ select {
 }
 
 input[type='text']:focus,
+input[type='tel']:focus,
 input[type='password']:focus,
 textarea:focus,
 select:focus {
@@ -4865,4 +4867,24 @@ body.surukleX * {
   color: var(--soluk);
   line-height: 1.7;
   font-size: 13px;
+}
+
+/* Proje kişileri: ad, numara, ilişki, tanışma durumu, kaldır */
+.hesapSatir.kisiSatir {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+}
+.kisiDurum {
+  display: inline-flex;
+  color: var(--soluk);
+}
+.kisiDurum.iyi {
+  color: var(--iyi);
+}
+@media (max-width: 1100px) {
+  .hesapSatir.kisiSatir {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
+  .hesapSatir.kisiSatir input:nth-of-type(3) {
+    grid-column: 1 / 3;
+  }
 }

@@ -260,7 +260,7 @@ export function projelerSayfasi({ git }) {
     const t = depo.t;
     const s = depo.sirket;
     const yeni = !!kayit.yeni;
-    const taslak = yeni ? { ad: '', klasor: '', aciklama: '', alanAdlari: [], hesaplar: [], test: { komut: '', adres: '', sorumlu: '', zorunlu: false }, notlar: '' } : JSON.parse(JSON.stringify(kayit));
+    const taslak = yeni ? { ad: '', klasor: '', aciklama: '', alanAdlari: [], hesaplar: [], kisiler: [], test: { komut: '', adres: '', sorumlu: '', zorunlu: false }, notlar: '' } : JSON.parse(JSON.stringify(kayit));
     acik = taslak;
     let adElle = !yeni;
 
@@ -323,6 +323,43 @@ export function projelerSayfasi({ git }) {
         )
       );
     hesapCiz();
+
+    // WhatsApp kişileri: beyin onlarla yalnızca bu proje hakkında konuşur, eklenince tanışma mesajı gider
+    taslak.kisiler = taslak.kisiler || [];
+    const kisiKap = h('div', { class: 'hesaplar' });
+    const kisiCiz = () =>
+      doldur(
+        kisiKap,
+        taslak.kisiler.map((k, i) => {
+          const ad = h('input', { type: 'text', value: k.ad, maxlength: '40', placeholder: t('proje.kisiAdOrnek'), 'aria-label': t('proje.kisiAd'), oninput: () => (k.ad = ad.value) });
+          const no = h('input', { type: 'tel', value: k.numara, maxlength: '30', placeholder: '+90 5xx xxx xx xx', 'aria-label': t('proje.kisiNumara'), oninput: () => (k.numara = no.value) });
+          const rol = h('input', { type: 'text', value: k.rol || '', maxlength: '60', placeholder: t('proje.kisiRolOrnek'), 'aria-label': t('proje.kisiRol'), oninput: () => (k.rol = rol.value) });
+          return h(
+            'div',
+            { class: 'hesapSatir kisiSatir' },
+            ad,
+            no,
+            rol,
+            h('span', { class: 'kisiDurum' + (k.tanitildi ? ' iyi' : ''), title: t(k.tanitildi ? 'proje.kisiTanitildi' : 'proje.kisiBekliyor') }, ikon(k.tanitildi ? 'tik' : 'saat', 14)),
+            h('button', { type: 'button', class: 'simge', 'aria-label': t('genel.kaldir'), onclick: () => (taslak.kisiler.splice(i, 1), kisiCiz()) }, ikon('kapat', 15))
+          );
+        }),
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'dugme kucuk',
+            onclick: () => {
+              taslak.kisiler.push({ ad: '', numara: '', rol: '' });
+              kisiCiz();
+              kisiKap.querySelector('.kisiSatir:last-of-type input')?.focus();
+            },
+          },
+          ikon('arti', 14),
+          t('proje.kisiEkle')
+        )
+      );
+    kisiCiz();
 
     // test
     const komutGiris = h('input', { type: 'text', class: 'mono', value: taslak.test.komut, maxlength: '300', placeholder: 'npm test', oninput: () => (taslak.test.komut = komutGiris.value) });
@@ -413,6 +450,7 @@ export function projelerSayfasi({ git }) {
         ),
         yeni ? null : gitBolumu(taslak.id),
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.hesaplar')), h('p', { class: 'alanIpucu' }, t('proje.hesapIpucu')), hesapKap),
+        h('section', { class: 'formBolum' }, h('h3', null, t('proje.kisiler')), h('p', { class: 'alanIpucu' }, t('proje.kisiIpucu', { x: s.beyin ? s.beyin.ad : '' })), kisiKap),
         h(
           'section',
           { class: 'formBolum' },
