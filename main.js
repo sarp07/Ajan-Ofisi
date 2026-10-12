@@ -291,6 +291,7 @@ function olayGeldi(ev, etiket = '') {
     }
   }
   ev = { ...ev, session_id: etiket };
+  if (ev.hook_event_name === 'UserPromptSubmit') k.sonIstem = Date.now();
   const kat = katGorunum(k);
   // beynin kayıt defteri yoktur, katların defteri vardır
   if (b.projeId) {
@@ -496,8 +497,14 @@ async function oturumaYaz(k, metin) {
   if (gecen < 6000) await new Promise((r) => setTimeout(r, 6000 - gecen));
   if (!k.oturum.acik) throw new Error('Oturum kapandı');
   k.oturum.yaz(veri);
-  await new Promise((r) => setTimeout(r, 120));
+  // Uzun ve çok satırlı yapıştırmayı motor biraz geç işler: Enter erken giderse metin kutuda gönderilmeden kalır.
+  // Bekleme metnin boyuna göre uzar, metin yine de gönderilmediyse Enter bir kez daha basılır.
+  await new Promise((r) => setTimeout(r, Math.min(1500, 250 + veri.length)));
+  const once = Date.now();
   k.oturum.yaz('\r');
+  await new Promise((r) => setTimeout(r, 1500));
+  // motor metni aldıysa UserPromptSubmit olayı gelmiştir; gelmediyse metin kutuda kalmıştır, Enter yinelenir
+  if (k.oturum.acik && !(k.sonIstem >= once)) k.oturum.yaz('\r');
 }
 
 const beyinIslemleri = {
@@ -1014,10 +1021,7 @@ function ipcKur() {
   h('sohbet:yaz', (kat, metin) => {
     const k = katlar.get(katAnahtari(kat));
     if (!k || !k.oturum.acik) return { hata: 'oturumYok' };
-    const veri = terminaleMetin(metin);
-    if (!veri) return { tamam: true };
-    k.oturum.yaz(veri);
-    setTimeout(() => k.oturum.yaz('\r'), 120);
+    oturumaYaz(k, metin).catch(() => {});
     return { tamam: true };
   });
   h('sohbet:onay', (kat, evet, mesajId) => {
