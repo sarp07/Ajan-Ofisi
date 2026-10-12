@@ -221,6 +221,16 @@ function projeNormalle(p, kimlikler, sefSablon) {
       }))
       .filter((x) => x.ad && x.numara.replace(/\D/g, '').length >= 7)
       .slice(0, 20),
+    // Servisler: katın compose dosyası, düşerse kendiliğinden kaldırılsın mı, kap başına bellek (MB) ve CPU sınırı
+    servis: (() => {
+      const s = ham.servis && typeof ham.servis === 'object' ? ham.servis : {};
+      return {
+        compose: metin(s.compose, 1000).trim(),
+        acikTut: !!s.acikTut,
+        bellekMb: Number.isFinite(Number(s.bellekMb)) ? Math.max(0, Math.min(65536, Math.round(Number(s.bellekMb)))) : 0,
+        cpu: Number.isFinite(Number(s.cpu)) ? Math.max(0, Math.min(64, Math.round(Number(s.cpu) * 10) / 10)) : 0,
+      };
+    })(),
     test: {
       komut: metin(test.komut, 300).trim(),
       adres: metin(test.adres, 300).trim(),

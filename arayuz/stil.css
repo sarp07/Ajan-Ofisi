@@ -344,6 +344,7 @@ a:hover {
 
 input[type='text'],
 input[type='tel'],
+input[type='number'],
 input[type='password'],
 textarea,
 select {
@@ -363,6 +364,7 @@ select {
 
 input[type='text']:focus,
 input[type='tel']:focus,
+input[type='number']:focus,
 input[type='password']:focus,
 textarea:focus,
 select:focus {
@@ -4886,5 +4888,161 @@ body.surukleX * {
   }
   .hesapSatir.kisiSatir input:nth-of-type(3) {
     grid-column: 1 / 3;
+  }
+}
+
+/* ---------- Servisler ---------- */
+.servisIzgara {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.servisIzgara:has(.servisLog) {
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+}
+.servisSol {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.servisMotor {
+  margin: 0;
+}
+.servisKatBas {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.servisKatBas h2 {
+  margin: 0;
+}
+.servisKatBas .ipucu {
+  margin: 4px 0 0;
+}
+.servisAyar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.8fr);
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+.servisAyar > .alan:last-child {
+  grid-column: 1 / -1;
+}
+.servisAyar .alan .dugme {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+.servisDosya,
+.servisSayi {
+  width: 100%;
+}
+.servisListe {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.servisKart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+  background: var(--panel2);
+  min-width: 0;
+}
+.servisKart.acik {
+  border-color: var(--cizgi2);
+}
+.servisBas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.servisBas b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.servisNokta {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sonuk);
+}
+.servisNokta.iyi {
+  background: var(--iyi);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--iyi) 20%, transparent);
+}
+.servisNokta.uyari {
+  background: var(--uyari);
+}
+.servisNokta.kotu {
+  background: var(--kotu);
+}
+.servisDurum {
+  margin-left: auto;
+  color: var(--soluk);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.servisBilgi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--soluk);
+  font-size: 12px;
+  font-family: var(--mono);
+  min-height: 16px;
+}
+.servisBilgi span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.servisLog {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 160px);
+  min-width: 0;
+}
+.servisLogMetin {
+  margin: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--zemin);
+  border: 1px solid var(--cizgi);
+  font: 12px/1.5 var(--mono);
+  color: var(--yazi);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@media (max-width: 1150px) {
+  .servisIzgara:has(.servisLog) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .servisLog {
+    position: static;
+    max-height: 420px;
+  }
+  .servisAyar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .servisAyar > .alan:first-child {
+    grid-column: 1 / -1;
   }
 }

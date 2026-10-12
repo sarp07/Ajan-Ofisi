@@ -32,6 +32,7 @@ import * as taslak from './cekirdek/taslak.js';
 import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from './cekirdek/kayit.js';
 import { MOTOR, cevirici } from './cekirdek/dil.js';
 import { WhatsappBaglantisi } from './cekirdek/whatsapp.js';
+import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
 const SINAMA = !!process.env.AJAN_OFIS_EKRAN;
@@ -953,6 +954,24 @@ async function kisileriTanit() {
   }
 }
 
+// Servisler: Docker Desktop üzerinden katların compose servisleri. 30 saniyede bir, açık tutulması istenen katlar denetlenir.
+const servisler = new Servisler({ env: process.env, degisti: () => gonder('servisler', {}), gunluk: (...p) => gunluk(...p) });
+function servisBildir(tur, p, adlar = [], hata = '') {
+  const t = depo.veri.dil === 'en';
+  const metin = {
+    motorDustu: t ? 'Docker stopped responding. Restarting Docker Desktop…' : 'Docker yanıt vermiyor. Docker Desktop yeniden açılıyor…',
+    motorAcilamadi: t ? 'Docker Desktop could not be started. Open it by hand.' : 'Docker Desktop açılamadı. Elle açman gerekiyor.',
+    kaldirildi: (t ? 'Services brought back up: ' : 'Düşen servisler yeniden kaldırıldı: ') + adlar.join(', '),
+    kaldirilamadi: (t ? 'Services could not be brought back up: ' : 'Servisler yeniden kaldırılamadı: ') + adlar.join(', ') + (hata ? ' · ' + hata : ''),
+  }[tur];
+  gunluk('servis', tur, p ? p.ad : '', adlar.join(','), hata);
+  masaustuBildir('hata', p ? `${p.ad} · ${t ? 'Services' : 'Servisler'}` : 'Docker', metin);
+  gonder('servisler', {});
+}
+setInterval(() => {
+  if (depo) servisler.toparla(depo.veri.projeler, servisBildir).catch((e) => gunluk('servis toparlama', e));
+}, 30000);
+
 let whatsapp = null;
 async function whatsappMesaji({ numara, metin, ses }) {
   const sahip = sahipNumarasiMi(numara);
@@ -1072,17 +1091,23 @@ function tarayiciIslemleri(kapsam) {
 }
 
 // MCP kapsamı: boş ise beyin (katlar + bütün hesaplar), değilse o katın şefi (yalnızca kendi hesapları)
+const servisProjesi = (id) => {
+  const p = depo.proje(id);
+  if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı ya da servisi yok: ' + id);
+  return p;
+};
+
 function mcpAraclari(kapsam) {
-  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')) };
+  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -1470,6 +1495,63 @@ function ipcKur() {
       return { hata: 'ses', ayrinti: String(e.message || e) };
     }
   });
+  // ---------- servisler ----------
+  // Arayüz için: motor durumu ve her katın bulunan compose dosyaları ile servisleri
+  h('servis:durum', async () => {
+    const motor = await servisler.motor();
+    const katlarListe = [];
+    for (const p of depo.veri.projeler.filter((x) => x.tur !== 'kisisel')) {
+      const k = { id: p.id, ad: p.ad, ayar: p.servis, dosyalar: composeBul(p.klasor), servisler: [], hata: '' };
+      // compose seçilmemişse bulunan ilk dosya önerilir (kaydedilmez, sahip seçince kaydolur)
+      if (!k.ayar.compose && k.dosyalar.length) k.oneri = k.dosyalar.find((d) => !/\.dev\./.test(d)) || k.dosyalar[0];
+      if (motor.calisiyor && k.ayar.compose) {
+        try {
+          k.servisler = await servisler.liste(p);
+        } catch (e) {
+          k.hata = String(e.message || e).slice(0, 400);
+        }
+      }
+      katlarListe.push(k);
+    }
+    return { tamam: true, motor, katlar: katlarListe };
+  });
+  h('servis:ayar', (id, ayar) => {
+    const p = depo.proje(String(id));
+    if (!p) return { hata: 'genel' };
+    const a = ayar && typeof ayar === 'object' ? ayar : {};
+    const yeni = { ...p.servis };
+    if (typeof a.compose === 'string') {
+      if (a.compose && !path.resolve(a.compose).startsWith(path.resolve(p.klasor) + path.sep)) return { hata: 'genel', ayrinti: 'Compose dosyası katın klasöründe olmalı.' };
+      yeni.compose = a.compose;
+    }
+    for (const k of ['acikTut', 'bellekMb', 'cpu']) if (k in a) yeni[k] = a[k];
+    depo.projeKaydet({ id: p.id, servis: yeni });
+    gonder('sirket', gorunum());
+    return { tamam: true };
+  });
+  h('servis:islem', async (id, islem, servis) => {
+    try {
+      const p = servisProjesi(String(id));
+      const s = servis ? String(servis) : '';
+      if (islem === 'baslat') await servisler.baslat(p, s);
+      else if (islem === 'durdur') await servisler.durdur(p, s);
+      else if (islem === 'yeniden') await servisler.yeniden(p, s);
+      else return { hata: 'genel' };
+      // sahip bütün servisleri başlatınca kat "açık tutulur", hepsini durdurunca bırakılır
+      if (!s && (islem === 'baslat' || islem === 'durdur')) depo.projeKaydet({ id: p.id, servis: { ...p.servis, acikTut: islem === 'baslat' } });
+      return { tamam: true };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 500) };
+    }
+  });
+  h('servis:log', async (id, servis) => {
+    try {
+      return { tamam: true, metin: await servisler.log(servisProjesi(String(id)), servis ? String(servis) : '', 300) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 500) };
+    }
+  });
+  h('servis:motorAc', async () => ({ tamam: await servisler.motoruAc() }));
   h('whatsapp:durum', () => (whatsapp ? { ...whatsapp.durum } : { baglanti: 'kapali' }));
   h('whatsapp:bagla', async () => {
     try {
@@ -1924,6 +2006,7 @@ if (!app.requestSingleInstanceLock()) {
     // Claude Code'u arka planda bul: pencere beklemesin
     kabukOrtami().then(async (env) => {
       ortam = env;
+      servisler.ortamAyarla(env);
       await motorlarYenile();
     });
     ortam = { ...process.env };
