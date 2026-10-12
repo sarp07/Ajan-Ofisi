@@ -40,6 +40,8 @@ export function ayarlarSayfasi({ git } = {}) {
     ad.addEventListener('change', () => ad.value.trim() && api.sirketGuncelle({ beyin: { ad: ad.value.trim() } }));
     const sahip = h('input', { type: 'text', value: b.sahip, maxlength: '40', placeholder: t('kur.sahipOrnek') });
     sahip.addEventListener('change', () => api.sirketGuncelle({ beyin: { sahip: sahip.value.trim() } }));
+    const wp = h('input', { type: 'text', value: b.whatsapp || '', maxlength: '60', placeholder: '+90 5xx xxx xx xx' });
+    wp.addEventListener('change', () => api.sirketGuncelle({ beyin: { whatsapp: wp.value.trim() } }));
     const tur = b.ses.tur;
     if (tur !== 'yok' && sesler.tur !== tur) queueMicrotask(() => sesleriYukle(tur));
     const anahtarAdi = tur === 'elevenlabs' ? 'elevenlabs' : 'codex';
@@ -105,6 +107,7 @@ export function ayarlarSayfasi({ git } = {}) {
       { class: 'panel' },
       h('h2', null, t('ayar.beyin')),
       h('div', { class: 'formIki' }, alan(t('kur.beyinAdi'), ad), alan(t('kur.sahip'), sahip)),
+      alan(t('ayar.beyinWhatsapp'), wp, t('ayar.beyinWhatsappIpucu', { x: b.ad })),
       h(
         'div',
         { class: 'alan' },

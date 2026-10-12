@@ -381,6 +381,8 @@ export const ARAYUZ = {
 
     'ayar.baslik': 'Ayarlar',
     'ayar.beyin': 'Beyin',
+    'ayar.beyinWhatsapp': 'WhatsApp numaran',
+    'ayar.beyinWhatsappIpucu': 'Tarayıcı sayfasında WhatsApp Web açıkken bu numaradan gelen yeni mesajlar {x}\'a kendiliğinden iletilir. Yapay zekâ WhatsApp\'ı sürekli okumaz, jeton harcanmaz.',
     'ayar.ofis': 'Ofis',
     'ayar.ofisAdi': 'Ofisin adı',
     'ayar.dil': 'Dil',
@@ -1070,6 +1072,8 @@ export const ARAYUZ = {
 
     'ayar.baslik': 'Settings',
     'ayar.beyin': 'Brain',
+    'ayar.beyinWhatsapp': 'Your WhatsApp number',
+    'ayar.beyinWhatsappIpucu': 'While WhatsApp Web is open on the Browser page, new messages from this number reach {x} by themselves. The AI does not keep reading WhatsApp, so no tokens are spent.',
     'ayar.ofis': 'Office',
     'ayar.ofisAdi': 'Office name',
     'ayar.dil': 'Language',

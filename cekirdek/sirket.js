@@ -132,6 +132,8 @@ function beyinNormalle(b, dil) {
     ses: { tur: SES_TURLERI.includes(ses.tur) ? ses.tur : 'yok', ses: metin(ses.ses, 120).trim() },
     // sahibe nasıl hitap edileceği (boşsa adsız hitap)
     sahip: metin(o.sahip, 40).trim(),
+    // sahibin WhatsApp'taki numarası ya da sohbet adı: yalnızca bu sohbetten gelen mesajlar beyne iletilir
+    whatsapp: metin(o.whatsapp, 60).trim(),
     kuruldu: !!o.kuruldu,
   };
 }

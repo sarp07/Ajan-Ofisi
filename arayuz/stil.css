@@ -2142,6 +2142,17 @@ code.yol {
   border-color: rgba(23, 184, 166, 0.28);
 }
 
+.mesaj.iletim {
+  max-width: 100%;
+  background: rgba(142, 124, 195, 0.08);
+  border-color: rgba(142, 124, 195, 0.32);
+  font-size: 12px;
+}
+
+.mesaj.iletim .mesajUst b {
+  color: #c4a7ff;
+}
+
 .mesaj.hata {
   border-color: rgba(229, 72, 77, 0.45);
   background: rgba(229, 72, 77, 0.08);

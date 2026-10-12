@@ -864,7 +864,7 @@ export function ofisSayfasi({ git }) {
           const yazi = satirlar.filter((x) => !x.startsWith('[Ek] ')).join('\n').trim();
           govde = h('div', null, yazi ? h('div', { class: 'mesajMetin' }, yazi) : null, ekler.length ? h('div', { class: 'ekSatir' }, ekler.map((y) => h('button', { type: 'button', class: 'ekCip', onclick: () => ozelMi() && api.odaAc(depo.gorunum, y) }, ikon('dosya', 13), h('span', null, y.split(/[\\/]/).pop())))) : null);
         } else govde = m.tur === 'hata' ? h('div', { class: 'mesajMetin' }, m.metin) : mdMetin(m.metin);
-        return h('li', { class: 'mesaj ' + (m.kim === 'sen' ? 'sen' : m.tur === 'hata' ? 'hata' : 'sef') }, ust, govde);
+        return h('li', { class: 'mesaj ' + (m.kim === 'sen' ? 'sen' : m.kim === 'iletim' ? 'iletim' : m.tur === 'hata' ? 'hata' : 'sef') }, ust, govde);
       })
     );
     if (dusunuyor) sohbetListe.append(h('li', { class: 'mesaj sef dusunuyor', 'aria-label': tt('sohbet.dusunuyor', { x: muhatap() }) }, h('div', { class: 'mesajUst' }, h('b', null, muhatap())), h('span', { class: 'nokta' }, h('i'), h('i'), h('i'))));

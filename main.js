@@ -303,7 +303,28 @@ function olayGeldi(ev, etiket = '') {
   }
   olaydanBildir(ev, kat);
   if (sohbetIsle(k.sohbet, codexUyarla(ev), kat)) sohbetGonder(k);
+  if (b.projeId) beyneIlet(k, ev, kat);
   if (olayIsle(k.durum, ev)) durumGonder(k);
+}
+
+// Kat → beyin: beynin bir işi verdiği katta şef işini bitirince, soru sorunca ya da onay bekleyince
+// beyne kendiliğinden haber verilir. Beyin cevabı görmek için katı yoklamak zorunda kalmaz.
+const beyinBekleyen = new Map(); // kat kimliği -> beynin mesajı gönderdiği an
+function beyneIlet(k, ev, kat) {
+  const beyin = katlar.get('beyin');
+  if (!beyin || !beyin.oturum.acik || !beyinBekleyen.has(k.anahtar) || ev.agent_id) return;
+  const ad = `${kat.sef.ad} · ${depo.proje(k.anahtar)?.ad || ''}`;
+  let metin = '';
+  if (ev.hook_event_name === 'Stop' && ev.last_assistant_message) {
+    metin = `[Kat: ${ad}] İşi bitirdi ve şunu yazdı:\n${String(ev.last_assistant_message).slice(0, 4000)}`;
+    beyinBekleyen.delete(k.anahtar);
+  } else if (ev.hook_event_name === 'PermissionRequest') {
+    metin = `[Kat: ${ad}] Sahibin onayını bekliyor: ${ev.tool_name || ''}. Sahibe söyle, onayı katın konuşma panelinden verebilir.`;
+  } else if (ev.hook_event_name === 'PreToolUse' && ev.tool_name === 'AskUserQuestion') {
+    const q = (ev.tool_input && Array.isArray(ev.tool_input.questions) ? ev.tool_input.questions : []).map((x) => x.question).filter(Boolean).join(' / ');
+    metin = `[Kat: ${ad}] Sahibe soru soruyor: ${q.slice(0, 800)}. Sahibe ilet, cevabını kat_sefine_yaz ile gönder.`;
+  }
+  if (metin) oturumaYaz(beyin, metin).catch(() => {});
 }
 
 function kayitOku(projeId) {
@@ -559,7 +580,8 @@ const beyinIslemleri = {
     if (!k || !k.oturum.acik) throw new Error('Kat oturumu kapalı. Önce kat_oturumunu_baslat çağır.');
     if (k.sohbet.some((m) => m.acik && m.arac === 'guven')) throw new Error('Kat, sahibin klasör güveni onayını bekliyor. Sahibe o katın konuşma panelinden onay vermesini söyle.');
     await oturumaYaz(k, `[${depo.veri.beyin.ad}] ${mesaj}`);
-    return 'Mesaj kat şefine iletildi. Cevabı kat_sohbeti ile takip et.';
+    beyinBekleyen.set(katId, Date.now());
+    return 'Mesaj kat şefine iletildi. Şef işi bitirince, soru sorunca ya da onay beklerken sana kendiliğinden "[Kat: ...]" diye başlayan bir mesajla haber gelecek. Beklerken katı yoklama, başka işine devam et.';
   },
   sohbet: (katId, son) => {
     const p = depo.proje(katId);
@@ -784,6 +806,41 @@ async function klonKat(repo) {
   return katAc(hedef);
 }
 
+// ---------- WhatsApp dinleyici ----------
+// Açık WhatsApp Web sekmelerinde sahibin sohbeti yapay zekâ kullanmadan izlenir. Okunmamış yeni mesaj gelince
+// yalnızca o mesaj beyne iletilir. Beynin WhatsApp'ı sürekli okuyup jeton harcamasına gerek kalmaz.
+const rakamlar = (x) => String(x || '').replace(/\D/g, '');
+function sahipSohbetiMi(baslik) {
+  const sahip = depo.veri.beyin.whatsapp || '';
+  if (!sahip) return false;
+  const r = rakamlar(sahip);
+  if (r.length >= 7) return rakamlar(baslik).endsWith(r.slice(-10));
+  return String(baslik).trim().toLowerCase() === sahip.trim().toLowerCase();
+}
+
+const whatsappSon = new Map(); // hesap kimliği -> son iletilen mesaj izi
+async function whatsappIzle() {
+  try {
+    const beyin = katlar.get('beyin');
+    if (beyin && beyin.oturum.acik && depo.veri.beyin.whatsapp && oda) {
+      for (const h of tumHesaplar().filter((x) => x.platform === 'whatsapp' && oda.sekmeler.has(x.id))) {
+        const sohbetler = await oda.whatsappSohbetler(h.id).catch(() => []);
+        const s = sohbetler.find((x) => sahipSohbetiMi(x.baslik));
+        if (!s) continue;
+        const iz = s.baslik + '|' + s.onizleme;
+        const once = whatsappSon.get(h.id);
+        whatsappSon.set(h.id, iz);
+        // ilk bakışta eski mesajı yeniden iletme; yalnızca okunmamış ve yeni olanı ilet
+        if (once === undefined || once === iz || !s.okunmamis || !s.onizleme) continue;
+        await oturumaYaz(beyin, `[WhatsApp · ${s.baslik}] ${s.onizleme}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${s.baslik}" olarak gönder.)`);
+      }
+    }
+  } catch {
+    /* sayfa değişmiş olabilir, bir sonraki turda yeniden denenir */
+  }
+  setTimeout(whatsappIzle, 4000);
+}
+
 // ---------- tarayıcı odası ----------
 // Bütün katların bağlı hesapları. Kişisel hesaplar da bir katta durur (ör. "Kişisel" adlı kat).
 // Projenin test adresi varsa o katta "Test" sekmesi de olur: web testleri burada yapılır.
@@ -857,6 +914,14 @@ function tarayiciIslemleri(kapsam) {
     tikla: (id, hedef) => (hesap(id), oda.tikla(id, hedef)),
     yaz: (id, girdi) => (hesap(id), oda.yaz(id, girdi)),
     onay: (soru) => sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru),
+    whatsappYaz: async (id, sohbet, metin) => {
+      hesap(id);
+      // sahibin kendi numarası dışındaki herkese yazmak sahibin onayına bağlıdır
+      if (!sahipSohbetiMi(sohbet) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta "${sohbet}" sohbetine şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
+      if (!oda.sekmeler.has(id)) oda.ac(hesap(id));
+      await oda.whatsappYaz(id, sohbet, metin);
+      return 'Mesaj gönderildi.';
+    },
   };
 }
 
@@ -1619,6 +1684,7 @@ if (!app.requestSingleInstanceLock()) {
     guncelleyici.baslat({ otomatik: depo.veri.otomatikGuncelleme });
     pencereAc();
     baglantiIzle();
+    whatsappIzle();
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     setInterval(() => {
       for (const k of katlar.values()) if (k.oturum.acik) durumGonder(k, true);

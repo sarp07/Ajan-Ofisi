@@ -285,6 +285,51 @@ export class TarayiciOdasi {
     return { tamam: true };
   }
 
+  // ---------- WhatsApp Web ----------
+  // Sohbet listesini okur: başlık, son mesaj ve okunmamış sayısı. Yapay zekâ kullanılmaz, yalnızca sayfa okunur.
+  async whatsappSohbetler(id) {
+    const wc = this.sekme(id);
+    return wc.executeJavaScript(
+      `(() => [...document.querySelectorAll('#pane-side [role="listitem"], #pane-side [role="row"]')].slice(0, 40).map((r) => {
+        const basliklar = [...r.querySelectorAll('span[title]')].map((x) => x.getAttribute('title') || '');
+        const etiket = [...r.querySelectorAll('[aria-label]')].map((x) => x.getAttribute('aria-label') || '').find((a) => /unread|okunmam/i.test(a)) || '';
+        const sayi = Number((etiket.match(/\\d+/) || [0])[0]) || 0;
+        return { baslik: basliklar[0] || '', onizleme: basliklar[1] || '', okunmamis: sayi };
+      }).filter((x) => x.baslik))()`,
+      true
+    );
+  }
+
+  // Bir sohbeti açar ve mesaj gönderir
+  async whatsappYaz(id, sohbet, metin) {
+    const wc = this.sekme(id);
+    const acildi = await wc.executeJavaScript(
+      `(() => {
+        const aranan = ${JSON.stringify(String(sohbet))}.toLowerCase();
+        const rakam = (x) => String(x).replace(/\\D/g, '');
+        const satir = [...document.querySelectorAll('#pane-side [role="listitem"], #pane-side [role="row"]')].find((r) => {
+          const b = (r.querySelector('span[title]') || {}).title || '';
+          return b.toLowerCase() === aranan || (rakam(aranan).length >= 7 && rakam(b).endsWith(rakam(aranan).slice(-10)));
+        });
+        if (!satir) return false;
+        const hedef = satir.querySelector('[tabindex]') || satir;
+        ['mousedown', 'mouseup', 'click'].forEach((t) => hedef.dispatchEvent(new MouseEvent(t, { bubbles: true })));
+        return true;
+      })()`,
+      true
+    );
+    if (!acildi) throw new Error('WhatsApp sohbeti bulunamadı: ' + sohbet);
+    await new Promise((r) => setTimeout(r, 900));
+    const odak = await wc.executeJavaScript(`(() => { const k = document.querySelector('footer [contenteditable="true"]'); if (!k) return false; k.focus(); return true; })()`, true);
+    if (!odak) throw new Error('Mesaj kutusu bulunamadı');
+    await wc.insertText(String(metin));
+    await new Promise((r) => setTimeout(r, 150));
+    wc.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+    wc.sendInputEvent({ type: 'char', keyCode: '\r' });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+    return { tamam: true };
+  }
+
   hepsiniKapat() {
     for (const id of [...this.sekmeler.keys()]) this.kapat(id);
   }

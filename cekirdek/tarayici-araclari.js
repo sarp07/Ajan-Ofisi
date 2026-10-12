@@ -4,7 +4,7 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'sahip_onayi'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'sahip_onayi', 'whatsapp_yaz'];
 export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz'];
 
 const KURAL =
@@ -58,6 +58,11 @@ export function tarayiciAraclari(ops) {
       aciklama: 'Bir alana yazı yazar. Seçici verilmezse odaktaki alana yazar. enter true ise ardından Enter tuşuna basar (çoğu sohbette mesajı gönderir). ' + KURAL,
       sema: nesne({ hesap_id: hesapId, metin: yazi('Yazılacak metin'), secici: yazi('Alanın CSS seçicisi (isteğe bağlı)'), enter: { type: 'boolean' } }, ['hesap_id', 'metin']),
       calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), secici: g.secici ? String(g.secici) : '', enter: !!g.enter }),
+    },
+    whatsapp_yaz: {
+      aciklama: 'WhatsApp Web hesabında bir sohbeti açar ve mesaj gönderir. Sahibin kendi numarasına yazarken onay sorulmaz. Başka birine yazacaksan araç önce sahibin onayını ister.',
+      sema: nesne({ hesap_id: hesapId, sohbet: yazi('Sohbetin adı ya da numarası (listede görünen)'), metin: yazi('Gönderilecek mesaj') }, ['hesap_id', 'sohbet', 'metin']),
+      calistir: async (g) => ops.whatsappYaz(String(g.hesap_id), String(g.sohbet), String(g.metin)),
     },
     sahip_onayi: {
       aciklama: 'Sahibe evet ya da hayır sorusu sorar ve cevabını bekler (en çok 10 dakika). Soru konuşma panelinde onay kartı olarak çıkar. Dışarıya etkisi olan her işten önce kullan.',
