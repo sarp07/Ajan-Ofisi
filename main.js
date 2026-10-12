@@ -17,7 +17,7 @@ import { MOTORLAR, codexBul, girisDurumu, girisKomutu, kurulumKomutlari, codexKl
 import { AnahtarDeposu } from './cekirdek/anahtarlar.js';
 import { mcpIsle } from './cekirdek/mcp.js';
 import { Guncelleyici } from './cekirdek/guncelleme.js';
-import { testAraclari, TEST_ARAC_ADLARI } from './cekirdek/test-alani.js';
+import { testAraclari, TEST_ARAC_ADLARI, testDurumu, iosAc, iosKapat, iosGoruntu, androidBaslat, androidGoruntu } from './cekirdek/test-alani.js';
 import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem } from './cekirdek/github.js';
 import { sesListesi, sesUret } from './cekirdek/ses.js';
 import { beyinAraclari, beyinTalimati, MCP_ADI } from './cekirdek/beyin.js';
@@ -1368,6 +1368,27 @@ function ipcKur() {
   });
   h('veri:ac', () => shell.openPath(app.getPath('userData')));
   h('baglanti:durum', () => ({ cevrimici }));
+  // ---------- test alanı ----------
+  const testIs = (fn) => async (...a) => {
+    try {
+      return { tamam: true, sonuc: await fn(...a) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).split('\n')[0] };
+    }
+  };
+  h('test:durum', testIs(() => testDurumu({ env: ortam })));
+  h('test:iosAc', testIs((udid) => iosAc(ortam, udid)));
+  h('test:iosKapat', testIs((udid) => iosKapat(ortam, udid)));
+  h('test:iosGoruntu', testIs((udid) => iosGoruntu(ortam, udid)));
+  h('test:androidBaslat', testIs((avd) => androidBaslat(ortam, avd)));
+  h('test:androidGoruntu', testIs((seri) => androidGoruntu(ortam, seri)));
+  // seçilen katın şefine test işi verir (kat oturumu açık olmalı)
+  h('test:sefeVer', testIs(async (katId, cihaz) => {
+    const k = katlar.get(String(katId));
+    if (!k || !k.oturum.acik) throw new Error('Katın oturumu kapalı. Önce Ofis sayfasından başlat.');
+    await oturumaYaz(k, `Uygulamayı ${cihaz} üzerinde test et: kur, başlat, ana akışları dene, ekran görüntüleriyle kontrol et, hataları düzelttir ve kısa bir test raporu yaz.`);
+    return true;
+  }));
   h('guncelleme:durum', () => ({ ...guncelleyici.durum }));
   h('guncelleme:kontrol', () => guncelleyici.kontrol());
   h('guncelleme:indir', () => guncelleyici.indir());

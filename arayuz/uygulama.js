@@ -8,6 +8,7 @@ import { skillerSayfasi } from './sayfa/skiller.js';
 import { kurallarSayfasi } from './sayfa/kurallar.js';
 import { ayarlarSayfasi } from './sayfa/ayarlar.js';
 import { tarayiciSayfasi } from './sayfa/tarayici.js';
+import { testSayfasi } from './sayfa/test.js';
 import { kurulum } from './sayfa/kurulum.js';
 import { guncellemeKur } from './guncelleme.js';
 import { cevrimdisiKur } from './cevrimdisi.js';
@@ -17,6 +18,7 @@ const SAYFALAR = [
   ['projeler', 'proje', projelerSayfasi],
   ['ekip', 'ekip', ekipSayfasi],
   ['tarayici', 'dunya', tarayiciSayfasi],
+  ['test', 'telefon', testSayfasi],
   ['skiller', 'skill', skillerSayfasi],
   ['kurallar', 'kural', kurallarSayfasi],
   ['ayarlar', 'ayar', ayarlarSayfasi],

@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { yolAra, calistir } from './claude.js';
 
 const MAC = process.platform === 'darwin';
@@ -132,3 +133,95 @@ export function testAraclari({ env }) {
 }
 
 export const TEST_ARAC_ADLARI = ['ios_cihazlar', 'ios_ac', 'ios_kur', 'ios_baslat', 'ios_adres', 'ios_goruntu', 'android_cihazlar', 'android_kur', 'android_adres', 'android_goruntu'];
+
+// ---------- Test alanı sayfası ----------
+// Sayfa için düz işlevler: cihaz listesi, aç, kapat, ekran görüntüsü. Ajan araçlarıyla aynı komutları kullanır.
+export function emulatorBul(env) {
+  const ev = os.homedir();
+  const adaylar = [yolAra(env, 'emulator'), path.join(ev, 'Library', 'Android', 'sdk', 'emulator', 'emulator'), path.join(ev, 'Android', 'Sdk', 'emulator', 'emulator'), path.join(process.env.LOCALAPPDATA || '', 'Android', 'Sdk', 'emulator', 'emulator.exe')].filter(Boolean);
+  return adaylar.find((y) => {
+    try {
+      return fs.statSync(y).isFile();
+    } catch {
+      return false;
+    }
+  }) || null;
+}
+
+export async function testDurumu({ env }) {
+  const sonuc = { platform: process.platform, ios: null, android: { adb: false, emulator: false, cihazlar: [], avdler: [] } };
+  if (MAC) {
+    try {
+      const j = JSON.parse(await simctl(env, ['list', 'devices', 'available', '-j']));
+      sonuc.ios = Object.entries(j.devices)
+        .flatMap(([rt, ds]) => ds.map((d) => ({ udid: d.udid, ad: d.name, surum: rt.split('.').pop().replace(/^iOS-/, 'iOS ').replace(/-/g, '.'), durum: d.state })))
+
+    } catch (e) {
+      sonuc.iosHata = String(e.message || e);
+      sonuc.ios = [];
+    }
+  }
+  const adb = adbBul(env);
+  const emu = emulatorBul(env);
+  sonuc.android.adb = !!adb;
+  sonuc.android.emulator = !!emu;
+  if (adb) {
+    const s = await calistir(adb, ['devices', '-l'], { env, zamanAsimi: 15000 });
+    sonuc.android.cihazlar = s.cikti
+      .split('\n')
+      .slice(1)
+      .filter((x) => x.trim())
+      .map((x) => {
+        const [seri, durum, ...ek] = x.trim().split(/\s+/);
+        const model = (ek.find((e) => e.startsWith('model:')) || '').slice(6).replace(/_/g, ' ');
+        return { seri, durum, ad: model || seri };
+      });
+  }
+  if (emu) {
+    const s = await calistir(emu, ['-list-avds'], { env, zamanAsimi: 15000 });
+    sonuc.android.avdler = s.cikti.split('\n').map((x) => x.trim()).filter((x) => x && !x.startsWith('INFO'));
+  }
+  return sonuc;
+}
+
+export async function iosAc(env, udid) {
+  await simctl(env, ['boot', String(udid)]).catch((e) => {
+    if (!/Booted/i.test(e.message)) throw e;
+  });
+  await calistir('/usr/bin/open', ['-a', 'Simulator'], { env, zamanAsimi: 15000 });
+}
+
+export const iosKapat = (env, udid) => simctl(env, ['shutdown', String(udid)]);
+
+export async function iosGoruntu(env, udid) {
+  const dosya = geciciPng();
+  try {
+    await simctl(env, ['io', String(udid), 'screenshot', dosya]);
+    return fs.readFileSync(dosya).toString('base64');
+  } finally {
+    fs.rmSync(dosya, { force: true });
+  }
+}
+
+export function androidBaslat(env, avd) {
+  const emu = emulatorBul(env);
+  if (!emu) throw new Error('Android emülatörü bulunamadı');
+  if (!/^[\w.-]+$/.test(String(avd))) throw new Error('Geçersiz sanal cihaz adı');
+  // emülatör uygulamadan bağımsız çalışır, uygulama kapansa da açık kalır
+  const c = spawn(emu, ['-avd', String(avd)], { env, detached: true, stdio: 'ignore' });
+  c.unref();
+}
+
+export async function androidGoruntu(env, seri) {
+  const adb = adbBul(env);
+  if (!adb) throw new Error('adb bulunamadı');
+  const dosya = geciciPng();
+  try {
+    const a = await calistir(adb, ['-s', String(seri), 'shell', 'screencap', '-p', '/sdcard/ofis-ekran.png'], { env, zamanAsimi: 30000 });
+    if (a.kod !== 0) throw new Error(a.hata.trim() || 'Ekran görüntüsü alınamadı');
+    await calistir(adb, ['-s', String(seri), 'pull', '/sdcard/ofis-ekran.png', dosya], { env, zamanAsimi: 30000 });
+    return fs.readFileSync(dosya).toString('base64');
+  } finally {
+    fs.rmSync(dosya, { force: true });
+  }
+}
