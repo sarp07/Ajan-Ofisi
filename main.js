@@ -78,6 +78,8 @@ function katAl(anahtar) {
   k.oturum = new Oturum({
     veri: (d) => {
       gonder('pty:veri', { kat: anahtar, d });
+      k.sonCikti = Date.now();
+      kesmeIzle(k, d);
       terminalIzle(k, d);
     },
     cikis: (kod, bilgi) => oturumBitti(k, kod, bilgi),
@@ -123,6 +125,17 @@ function sirketYayinla() {
     durumGonder(k, true);
   }
   gonder('sirket', gorunum());
+}
+
+// İstem Esc ile kesilince motor Stop olayı göndermez: terminaldeki "interrupted" yazısından anlaşılır
+function kesmeIzle(k, d) {
+  const b = k.oturum.bilgi;
+  if (!b || !b.mesgul) return;
+  k.kesme = ((k.kesme || '') + duzMetin(d)).slice(-400);
+  if (!k.kesme.includes('interrupted')) return;
+  k.kesme = '';
+  b.mesgul = false;
+  kutuyuGonder(k);
 }
 
 // Terminalde olay üretmeyen ama sahibin cevabını bekleyen ekranlar: şimdilik klasör güveni
@@ -291,7 +304,7 @@ function olayGeldi(ev, etiket = '') {
     }
   }
   ev = { ...ev, session_id: etiket };
-  if (ev.hook_event_name === 'UserPromptSubmit') k.sonIstem = Date.now();
+  mesguliyetIzle(k, ev);
   const kat = katGorunum(k);
   // beynin kayıt defteri yoktur, katların defteri vardır
   if (b.projeId) {
@@ -489,22 +502,89 @@ async function beyinBaslat({ sutun, satir }) {
   return { tamam: true, ...oturumBilgi(k) };
 }
 
-// Bir oturuma metin gönderir. Oturum yeni açıldıysa arayüzün hazır olması için kısa süre beklenir.
-async function oturumaYaz(k, metin) {
+// ---------- oturuma yazma ----------
+// Motora metin göndermenin tek yolu terminaline yazmaktır. Yanlış anda yazılan metin kutuda kalır ya da açık bir
+// izin sorusunun cevabı olur. Bu yüzden metinler sıraya girer ve yalnızca motor boştayken gönderilir:
+// UserPromptSubmit gelince motor meşguldür, Stop gelince boşa çıkar ve sıradaki metin gönderilir.
+// Enter, terminal yapıştırılan metni çizmeyi bitirince basılır. Gönderimi motorun UserPromptSubmit olayı doğrular.
+const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function oturumaYaz(k, metin) {
   const veri = terminaleMetin(metin);
-  if (!veri) return;
-  const gecen = Date.now() - (k.oturum.bilgi.baslangic || 0);
-  if (gecen < 6000) await new Promise((r) => setTimeout(r, 6000 - gecen));
-  if (!k.oturum.acik) throw new Error('Oturum kapandı');
-  k.oturum.yaz(veri);
-  // Uzun ve çok satırlı yapıştırmayı motor biraz geç işler: Enter erken giderse metin kutuda gönderilmeden kalır.
-  // Bekleme metnin boyuna göre uzar, metin yine de gönderilmediyse Enter bir kez daha basılır.
-  await new Promise((r) => setTimeout(r, Math.min(1500, 250 + veri.length)));
-  const once = Date.now();
-  k.oturum.yaz('\r');
-  await new Promise((r) => setTimeout(r, 1500));
-  // motor metni aldıysa UserPromptSubmit olayı gelmiştir; gelmediyse metin kutuda kalmıştır, Enter yinelenir
-  if (k.oturum.acik && !(k.sonIstem >= once)) k.oturum.yaz('\r');
+  if (!veri) return Promise.resolve();
+  if (!k.oturum.acik) return Promise.reject(new Error('Oturum kapandı'));
+  return new Promise((coz, red) => {
+    (k.kutu ||= []).push({ veri, coz, red });
+    kutuyuGonder(k);
+  });
+}
+
+// Terminal çıktısı belli bir süre durgun kalana kadar bekler: motor ekranı çizmeyi bitirmiştir
+async function cizimBitsin(k, durgun, sinir) {
+  const bas = Date.now();
+  while (Date.now() - bas < sinir && Date.now() - (k.sonCikti || 0) < durgun) await bekle(50);
+}
+
+function istemBekle(k, sinir) {
+  return new Promise((coz) => {
+    const z = setTimeout(() => ((k.istemBekleyen = null), coz(false)), sinir);
+    k.istemBekleyen = () => (clearTimeout(z), (k.istemBekleyen = null), coz(true));
+  });
+}
+
+// Motor boşta mı: açık bir istem yok, klasör güveni sorusu açık değil, ilk açılışta ekran çizilmiş
+function oturumBosta(k) {
+  const b = k.oturum.bilgi || {};
+  if (b.mesgul) return false;
+  if (k.sohbet.some((m) => m.arac === 'guven' && m.acik)) return false;
+  return Date.now() - (b.baslangic || 0) > 2500 && Date.now() - (k.sonCikti || 0) > 800;
+}
+
+async function kutuyuGonder(k) {
+  if (k.gonderiyor) return;
+  k.gonderiyor = true;
+  try {
+    while (k.kutu && k.kutu.length) {
+      if (!k.oturum.acik) {
+        for (const m of k.kutu.splice(0)) m.red(new Error('Oturum kapandı'));
+        return;
+      }
+      if (!oturumBosta(k)) {
+        // meşgulse Stop olayı kutuyu yeniden çalıştırır; ilk açılışta ekranın çizilmesi beklenir
+        if (!(k.oturum.bilgi || {}).mesgul) setTimeout(() => kutuyuGonder(k), 500);
+        return;
+      }
+      const m = k.kutu.shift();
+      k.oturum.yaz(m.veri);
+      await cizimBitsin(k, 250, 4000);
+      let alindi = istemBekle(k, 4000);
+      k.oturum.yaz('\r');
+      // Enter çizimin son anına denk gelip kaybolduysa metin kutuda durur; motor almadığını bildirmiş olur
+      if (!(await alindi) && k.oturum.acik && !(k.oturum.bilgi || {}).mesgul) {
+        await cizimBitsin(k, 250, 2000);
+        alindi = istemBekle(k, 4000);
+        k.oturum.yaz('\r');
+        await alindi;
+      }
+      m.coz();
+    }
+  } finally {
+    k.gonderiyor = false;
+  }
+}
+
+// Motor olaylarından meşguliyet: kat ana oturumunun istemi başlar ve biter (alt ajanların Stop'u sayılmaz)
+function mesguliyetIzle(k, ev) {
+  const b = k.oturum.bilgi;
+  if (!b) return;
+  if (ev.hook_event_name === 'UserPromptSubmit') {
+    b.mesgul = true;
+    k.kesme = '';
+    if (k.istemBekleyen) k.istemBekleyen();
+  } else if ((ev.hook_event_name === 'Stop' || ev.hook_event_name === 'StopFailure') && !ev.agent_id) {
+    b.mesgul = false;
+    kutuyuGonder(k);
+  }
 }
 
 const beyinIslemleri = {
@@ -586,9 +666,10 @@ const beyinIslemleri = {
     const k = katlar.get(katId);
     if (!k || !k.oturum.acik) throw new Error('Kat oturumu kapalı. Önce kat_oturumunu_baslat çağır.');
     if (k.sohbet.some((m) => m.acik && m.arac === 'guven')) throw new Error('Kat, sahibin klasör güveni onayını bekliyor. Sahibe o katın konuşma panelinden onay vermesini söyle.');
-    await oturumaYaz(k, `[${depo.veri.beyin.ad}] ${mesaj}`);
+    const mesgul = !!(k.oturum.bilgi || {}).mesgul;
+    oturumaYaz(k, `[${depo.veri.beyin.ad}] ${mesaj}`).catch(() => {});
     beyinBekleyen.set(katId, Date.now());
-    return 'Mesaj kat şefine iletildi. Şef işi bitirince, soru sorunca ya da onay beklerken sana kendiliğinden "[Kat: ...]" diye başlayan bir mesajla haber gelecek. Beklerken katı yoklama, başka işine devam et.';
+    return (mesgul ? 'Şef şu an çalışıyor: mesajın sıraya alındı, elindeki işi bitirince ona iletilecek. ' : 'Mesaj kat şefine iletildi.') + ' Şef işi bitirince, soru sorunca ya da onay beklerken sana kendiliğinden "[Kat: ...]" diye başlayan bir mesajla haber gelecek. Beklerken katı yoklama, başka işine devam et.';
   },
   sohbet: (katId, son) => {
     const p = depo.proje(katId);
@@ -853,7 +934,7 @@ async function whatsappIzle() {
         }
         // ilk bakışta eski mesajları yeniden iletme, yalnızca hafızaya al
         if (ilkBakis || !yeni.length) continue;
-        await oturumaYaz(beyin, `[WhatsApp · ${baslik}] ${yeni.join('\n')}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${baslik}" olarak gönder. Sayfayı ayrıca okumana gerek yok: yeni mesajlar sana kendiliğinden gelir.)`);
+        oturumaYaz(beyin, `[WhatsApp · ${baslik}] ${yeni.join('\n')}\n(Sahibin WhatsApp mesajı. Cevabı whatsapp_yaz ile hesap_id ${h.id}, sohbet "${baslik}" olarak gönder. Sayfayı ayrıca okumana gerek yok: yeni mesajlar sana kendiliğinden gelir.)`).catch(() => {});
       }
     }
   } catch {
@@ -1415,7 +1496,7 @@ function ipcKur() {
   h('test:sefeVer', testIs(async (katId, cihaz) => {
     const k = katlar.get(String(katId));
     if (!k || !k.oturum.acik) throw new Error('Katın oturumu kapalı. Önce Ofis sayfasından başlat.');
-    await oturumaYaz(k, `Uygulamayı ${cihaz} üzerinde test et: kur, başlat, ana akışları dene, ekran görüntüleriyle kontrol et, hataları düzelttir ve kısa bir test raporu yaz.`);
+    oturumaYaz(k, `Uygulamayı ${cihaz} üzerinde test et: kur, başlat, ana akışları dene, ekran görüntüleriyle kontrol et, hataları düzelttir ve kısa bir test raporu yaz.`).catch(() => {});
     return true;
   }));
   h('guncelleme:durum', () => ({ ...guncelleyici.durum }));
