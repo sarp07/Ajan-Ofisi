@@ -183,7 +183,8 @@ function kisiAl(d, { ad, tur, ev }, z) {
   const id = 'a:' + (tanim ? rol : sade(ad || turKodu(tur) || 'ajan'));
   let a = d.ajanlar.get(id);
   if (!a) {
-    a = yeniKisi(d, id, { ad: tanim ? tanim.ad : String(ad || turKodu(tur)), rol, tur: turKodu(tur) || null, oturum: ev.session_id, kalici: true }, z);
+    // takım dışı adlı yardımcılar (ör. "cem-final", "zeynep-2") kalıcı değildir: işi bitince ofisten ayrılır
+    a = yeniKisi(d, id, { ad: tanim ? tanim.ad : String(ad || turKodu(tur)), rol, tur: turKodu(tur) || null, oturum: ev.session_id, kalici: !!tanim }, z);
     akisEkle(d, z, a, 'durum', d.t('geldi'));
   }
   return a;
@@ -467,7 +468,6 @@ export function olayIsle(d, ev, z = Date.now()) {
           d.ajanlar.delete(x.id);
           x.id = hedefId;
           x.ad = String(tAd);
-          x.kalici = true;
           d.ajanlar.set(x.id, x);
           for (const [k, v] of d.kimlik) if (v.startsWith('s:') && !d.ajanlar.has(v)) d.kimlik.set(k, x.id);
         }

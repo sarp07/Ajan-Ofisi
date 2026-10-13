@@ -32,6 +32,7 @@ import * as taslak from './cekirdek/taslak.js';
 import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from './cekirdek/kayit.js';
 import { MOTOR, cevirici } from './cekirdek/dil.js';
 import { WhatsappBaglantisi } from './cekirdek/whatsapp.js';
+import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -320,7 +321,17 @@ function olayGeldi(ev, etiket = '') {
   olaydanBildir(ev, kat);
   if (sohbetIsle(k.sohbet, codexUyarla(ev), kat)) sohbetGonder(k);
   if (b.projeId) beyneIlet(k, ev, kat);
+  // alt ajan sınırı: her çalışan en fazla bir yardımcı, takım dışı yardımcılar ekip sayısı kadar
+  let karar = null;
+  if (b.projeId) {
+    const uyarli = codexUyarla(ev);
+    b.altlar = b.altlar || new Map();
+    altAjanIzle(k.durum, b.altlar, uyarli);
+    karar = altAjanKarari(k.durum, b.altlar, uyarli, { uyeSayisi: kat.ajanlar.length, dil: depo.veri.dil });
+    if (karar) gunluk('alt ajan reddedildi', kat.ad || '', karar.neden);
+  }
   if (olayIsle(k.durum, ev)) durumGonder(k);
+  return karar ? retCevabi(karar.neden) : null;
 }
 
 // Kat → beyin: beynin bir işi verdiği katta şef işini bitirince, soru sorunca ya da onay bekleyince

@@ -45,6 +45,7 @@ const M = {
     alan: 'Alanlar',
     kullan: 'Ne zaman',
     gorev: 'Görev listesinde sana ait bir iş varsa işe başlarken sürüyor, bitirince tamamlandı olarak işaretle.',
+    yardimciKurali: 'Yardımcı sınırı: her ekip üyesi aynı anda en fazla bir yardımcı alabilir (kendisi ve bir kopyası); takım dışı yardımcıların toplamı ekip sayısını geçemez. Yeni ajan açmadan önce SendMessage ile mevcut üyeye ya da boşta duran yardımcıya iş ver. İşi biten yardımcıyı kapat. Sınır aşılırsa ajan açma isteği reddedilir.',
     gorevSef: 'Ekibe iş dağıtırken her işi görev listesine yaz ve sahibini ata. Ekip üyesi işi teslim ettiğinde görevi tamamlandı olarak işaretlememişse sen işaretle.',
     proje: 'Üzerinde çalışılan proje',
     klasor: 'Klasör',
@@ -88,6 +89,7 @@ const M = {
     alan: 'Areas',
     kullan: 'When',
     gorev: 'If a job on the task list is yours, mark it in progress when you start and completed when you finish.',
+    yardimciKurali: 'Helper limit: each team member can have at most one helper at a time (itself and one copy); helpers outside the team can be at most as many as the team. Before opening a new agent, give the work to an existing member or an idle helper with SendMessage. Shut down helpers whose work is done. Requests over the limit are refused.',
     gorevSef: 'When you hand out work, put every job on the task list and assign its owner. If a team member hands work in without marking the task completed, mark it yourself.',
     proje: 'The project being worked on',
     klasor: 'Folder',
@@ -230,7 +232,7 @@ export function sefMetni(sirket, { proje = null, devir = '', motor = 'claude' } 
       codex
         ? `${a.ad} (agent_type: ${a.id})${a.unvan ? '. ' + a.unvan : ''}${a.alanlar.length ? '. ' + m.alan + ': ' + a.alanlar.join(', ') : ''}.${a.cagri ? ' ' + m.kullan + ': ' + a.cagri : ''}`
         : `${a.ad} (${m.tur}: ${EKLENTI_ADI}:${a.id}, ${m.isim}: ${a.id})${a.unvan ? '. ' + a.unvan : ''}${a.alanlar.length ? '. ' + m.alan + ': ' + a.alanlar.join(', ') : ''}.${a.cagri ? ' ' + m.kullan + ': ' + a.cagri : ''}`;
-    bolum.push(`## ${m.ekibin}\n\n${codex ? m.ekipCagriCodex : m.ekipCagri}\n\n${liste(sirket.ajanlar.map(satir))}\n\n${codex ? m.gorevSefCodex : m.gorevSef}`);
+    bolum.push(`## ${m.ekibin}\n\n${codex ? m.ekipCagriCodex : m.ekipCagri}\n\n${liste(sirket.ajanlar.map(satir))}\n\n${codex ? m.gorevSefCodex : m.gorevSef}\n\n${m.yardimciKurali}`);
   } else {
     bolum.push(`## ${m.ekibin}\n\n${m.ekipYok}`);
   }
@@ -314,8 +316,9 @@ export function derle(sirket, { hedef, skiller = [], port, anahtar, etiket = '',
 export const CODEX_OLAYLAR = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'SubagentStart', 'SubagentStop'];
 
 export function codexKancaKomutu(adres, platform = process.platform) {
-  if (platform === 'win32') return `curl.exe -s -m 2 -H "content-type: application/json" --data-binary @- -o NUL "${adres}"`;
-  return `curl -s -m 2 -H 'content-type: application/json' --data-binary @- '${adres}' >/dev/null 2>&1 || true`;
+  // sunucu yalnızca bir karar (ör. alt ajan reddi) varsa gövde döndürür; o zaman çıktı motora gider
+  if (platform === 'win32') return `curl.exe -s -m 2 -H "content-type: application/json" --data-binary @- "${adres}"`;
+  return `curl -s -m 2 -H 'content-type: application/json' --data-binary @- '${adres}' 2>/dev/null || true`;
 }
 
 function codexDerle(sirket, { hedef, skiller, port, anahtar, etiket, proje, devir, codexModel }) {

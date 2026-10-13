@@ -58,15 +58,17 @@ export function kancaSunucu({ port, anahtar, olay, mcp = null }) {
       return;
     }
     govdeOku(istek, (govde) => {
-      // boş 2xx: Claude Code bunu "karar yok, devam et" olarak yorumlar
-      yanit.writeHead(204).end();
+      // boş 2xx: motor bunu "karar yok, devam et" olarak yorumlar. Olay bir karar döndürürse (ör. alt ajan sınırı) o gönderilir.
+      let karar = null;
       try {
         let etiket = '';
         if (etiketli) etiket = decodeURIComponent(url.slice(yol.length + 1)).slice(0, 80);
-        olay(JSON.parse(govde), etiket);
+        karar = olay(JSON.parse(govde), etiket) || null;
       } catch {
         /* bozuk gövde: yok say */
       }
+      if (karar) yanit.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(karar));
+      else yanit.writeHead(204).end();
     });
   });
   return new Promise((coz, reddet) => {

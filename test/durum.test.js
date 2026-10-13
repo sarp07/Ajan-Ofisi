@@ -18,6 +18,7 @@ import { cevirici, MOTOR } from '../cekirdek/dil.js';
 import { SENARYO } from './senaryo.js';
 import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from '../cekirdek/kayit.js';
 import { projeMetni } from '../cekirdek/derle.js';
+import { altAjanIzle, altAjanKarari } from '../cekirdek/sinir.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ofis-test-'));
 
@@ -442,6 +443,27 @@ olayIsle(d5, { ...o5, hook_event_name: 'SubagentStop', agent_id: 'aarastirmaci-0
 olayIsle(d5, { ...o5, hook_event_name: 'TeammateIdle', agent_id: 'aarastirmaci-0abcd9', agent_type: 'arastirmaci', teammate_name: 'arastirmaci', team_name: 'session-1' }, z);
 assert.equal(d5.ajanlar.get('a:arastirmaci').durum, 'bosta');
 assert.equal(d5.ajanlar.size, 2);
+
+// ---------- alt ajan sınırı: her üye en fazla bir yardımcı, takım dışı yardımcılar ekip sayısı kadar ----------
+{
+  const ds = yeniDurum();
+  sirketAyarla(ds, normalle({ dil: 'tr', sef: { ad: 'Atlas' }, ajanlar: [{ id: 'cem', ad: 'Cem' }, { id: 'elif', ad: 'Elif' }] }));
+  const c = new Map();
+  const iste = (tip, ad) => altAjanKarari(ds, c, { hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: tip, name: ad } }, { uyeSayisi: 2 });
+  const basla = (id, tip) => altAjanIzle(ds, c, { hook_event_name: 'SubagentStart', agent_id: id, agent_type: tip });
+  assert.equal(iste('ofis:cem'), null);
+  basla('a1', 'ofis:cem');
+  assert.equal(iste('ofis:cem', 'cem-2'), null, 'Cem bir yardımcı alabilir');
+  basla('a2', 'ofis:cem');
+  assert.match(iste('ofis:cem', 'cem-final').neden, /Cem zaten bir yardımcıyla/);
+  altAjanIzle(ds, c, { hook_event_name: 'SubagentStop', agent_id: 'a2' });
+  assert.equal(iste('ofis:cem'), null, 'yardımcı bitince yenisi açılabilir');
+  basla('g1', 'general-purpose');
+  basla('g2', 'general-purpose');
+  assert.match(iste('general-purpose', 'z yedek').neden, /en fazla 2/);
+  assert.equal(altAjanKarari(ds, c, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: {} }), null);
+  assert.equal(altAjanKarari(ds, c, { hook_event_name: 'PreToolUse', agent_id: 'g1', tool_name: 'Agent', tool_input: { subagent_type: 'general-purpose' } }), null, 'alt ajanın kendi çağrısı sayılmaz');
+}
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');
