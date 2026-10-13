@@ -492,5 +492,16 @@ assert.equal(onayKomutu('onay 12345'), null);
   assert.ok(!l[0].metin.includes('pasted_content'));
 }
 
+// ---------- çok depolu kat ----------
+{
+  const n = normalle({ projeler: [{ klasor: '/k/api', ad: 'Kahve', depolar: [{ ad: 'web', klasor: '/k/web' }, { ad: 'tekrar', klasor: '/k/web' }, { ad: 'ana', klasor: '/k/api' }, { ad: 'goreli', klasor: 'k/admin' }] }] });
+  const p = n.projeler[0];
+  assert.deepEqual(p.depolar.map((d) => d.ad), ['web'], 'tekrar eden, ana klasörle aynı ve göreli yollar atılır');
+  const metin = projeMetni(n, p);
+  assert.ok(metin.includes('- web: /k/web') && metin.includes('/k/api'), 'talimatta katın depoları listelenir');
+  const cx = codexArgumanlari(n, { talimat: 'x', roller: [], kancaKomutu: 'k' }, { klasor: '/k/api', ekKlasorler: ['/k/web'] });
+  assert.deepEqual(cx.slice(cx.indexOf('--add-dir'), cx.indexOf('--add-dir') + 2), ['--add-dir', '/k/web'], 'Codex ek depolara erişir');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

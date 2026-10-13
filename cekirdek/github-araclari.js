@@ -8,9 +8,10 @@ const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // ortam(): { git, gh, env, klasor } katın deposu. onay(soru): sahibin onayı (true/false)
 export function githubAraclari(ortam, onay, { beyin = false } = {}) {
-  const kat = beyin ? { kat_id: yazi('Katın kimliği') } : {};
+  // depo: çok depolu katlarda hangi depo (adıyla); boşsa ana depo
+  const kat = { ...(beyin ? { kat_id: yazi('Katın kimliği') } : {}), depo: yazi('Depo adı (çok depolu katlarda, ör. api, web). Boşsa ana depo.') };
   const gk = beyin ? ['kat_id'] : [];
-  const o = (g) => ortam(beyin ? String(g.kat_id || '') : '');
+  const o = (g) => ortam(beyin ? String(g.kat_id || '') : '', g.depo ? String(g.depo) : '');
   const is = (g, islem, s) => githubIslem({ ...o(g), islem, s });
   return {
     github_dallar: {

@@ -32,9 +32,10 @@ export function projelerSayfasi({ git }) {
   let acik = null;
   const ozetler = new Map(); // proje kimliği -> kayıt durumu
   const repolar = new Map(); // proje kimliği -> git ve GitHub durumu
+  const seciliDepo = new Map(); // çok depolu katta Git panelinde açık depo
 
   async function repoYukle(id) {
-    const r = await api.githubRepo(id);
+    const r = await api.githubRepo(id, seciliDepo.get(id) || '');
     repolar.set(id, r && !r.hata ? r : { depo: false });
   }
 
@@ -147,9 +148,72 @@ export function projelerSayfasi({ git }) {
   }
 
   // ---------- git ----------
+  // Çok depolu kat: ana klasör ve ek depolar (api, web, admin ayrı repolar). Ekleme ve çıkarma hemen kaydedilir;
+  // taslaktaki liste de güncellenir ki "Kaydet" eski listeyi geri yazmasın.
+  function depolarBolumu(taslak) {
+    const t = depo.t;
+    const kap = h('section', { class: 'formBolum' });
+    taslak.depolar = taslak.depolar || [];
+    let calisiyor = false;
+    const ciz = () => {
+      const repoGiris = h('input', { type: 'text', placeholder: t('depo.repoOrnek'), maxlength: '120' });
+      const ekle = async (kaynak) => {
+        calisiyor = true;
+        ciz();
+        const r = await api.depoEkle(taslak.id, kaynak);
+        calisiyor = false;
+        if (r && r.tamam) {
+          taslak.depolar = r.depolar.filter((d) => d.id !== 'ana');
+          seciliDepo.delete(taslak.id);
+          await repoYukle(taslak.id);
+          bildir(t('depo.eklendi'));
+        } else if (r && !r.iptal) bildir((r && r.ayrinti) || hataMetni(r), true);
+        ciz();
+      };
+      doldur(
+        kap,
+        h('h3', null, t('depo.baslik')),
+        h('p', { class: 'alanIpucu' }, t('depo.ipucu')),
+        h(
+          'ol',
+          { class: 'ghListe' },
+          h('li', { class: 'ghDal simdiki' }, h('code', null, taslak.klasor.split(/[\\/]/).pop()), h('span', { class: 'ghEtiketler' }, h('span', { class: 'ghEtiket iyi' }, t('depo.ana')), h('span', { class: 'alanIpucu' }, taslak.klasor)), h('span')),
+          taslak.depolar.map((d) =>
+            h(
+              'li',
+              { class: 'ghDal' },
+              h('code', null, d.ad),
+              h('span', { class: 'ghEtiketler' }, h('span', { class: 'alanIpucu' }, d.klasor)),
+              h('button', {
+                type: 'button',
+                class: 'simge',
+                'aria-label': t('genel.kaldir'),
+                title: t('depo.cikar'),
+                onclick: async () => {
+                  await api.depoCikar(taslak.id, d.id);
+                  taslak.depolar = taslak.depolar.filter((x) => x.id !== d.id);
+                  seciliDepo.delete(taslak.id);
+                  ciz();
+                },
+              }, ikon('kapat', 15))
+            )
+          )
+        ),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h('button', { type: 'button', class: 'dugme kucuk', disabled: calisiyor, onclick: () => ekle(null) }, calisiyor ? h('span', { class: 'donen' }) : ikon('klasor', 13), t('depo.klasorEkle')),
+          (depo.bilgi.github || {}).girisli ? h('span', { class: 'gitCommit' }, repoGiris, h('button', { type: 'button', class: 'dugme kucuk', disabled: calisiyor, onclick: () => (repoGiris.value.trim() ? ekle({ repo: repoGiris.value.trim() }) : repoGiris.focus()) }, ikon('indir', 13), t('depo.klonla'))) : null
+        )
+      );
+    };
+    ciz();
+    return kap;
+  }
+
   // GitHub yönetimi: dallar (sil, birleştir), PR'lar (aç, birleştir, kapat), depo (gizli/açık, arşiv, ad, sil).
   // Tehlikeli düğmeler önce "emin misin" durumuna geçer; depo silmek için deponun tam adı yazılır.
-  function githubYonetimi(projeId, r, yenile) {
+  function githubYonetimi(projeId, r, yenile, depoAdi = '') {
     const t = depo.t;
     const kap = h('div', { class: 'ghYonetim' });
     let dallar = null;
@@ -162,7 +226,7 @@ export function projelerSayfasi({ git }) {
       calisan = anahtar;
       emin = '';
       ciz();
-      const s = await api.githubIslem(projeId, islem, secenek);
+      const s = await api.githubIslem(projeId, islem, { ...secenek, depo: depoAdi });
       calisan = '';
       if (!s || s.hata) bildir((s && s.ayrinti) || hataMetni(s), true);
       else bildir(basari || t('github.tamam'));
@@ -172,10 +236,10 @@ export function projelerSayfasi({ git }) {
     const tehlikeli = (anahtar, yazi, eminYazi, fn, sinif = '') =>
       h('button', { type: 'button', class: 'dugme kucuk ' + sinif + (emin === anahtar ? ' tehlike' : ''), disabled: !!calisan, onclick: () => (emin === anahtar ? fn() : ((emin = anahtar), ciz())) }, calisan === anahtar ? h('span', { class: 'donen' }) : null, emin === anahtar ? eminYazi : yazi);
     async function yukle() {
-      const d = await api.githubDallar(projeId);
+      const d = await api.githubDallar(projeId, depoAdi);
       dallar = d && d.tamam ? d.dallar : [];
       if (r.githubAdres && (depo.bilgi.github || {}).girisli) {
-        const b = await api.githubIslem(projeId, 'depoBilgi', {});
+        const b = await api.githubIslem(projeId, 'depoBilgi', { depo: depoAdi });
         depoB = b && b.tamam ? b.sonuc : null;
       }
       ciz();
@@ -265,7 +329,7 @@ export function projelerSayfasi({ git }) {
     const islem = async (ad, deger, basari) => {
       calisiyor = ad;
       await ciz_();
-      const r = await api.gitIslem(projeId, ad, deger);
+      const r = await api.gitIslem(projeId, ad, deger, seciliDepo.get(projeId) || '');
       calisiyor = '';
       if (!r || r.hata) bildir(hataMetni(r), true);
       else {
@@ -277,8 +341,34 @@ export function projelerSayfasi({ git }) {
     };
     const ciz_ = async () => {
       const r = repolar.get(projeId) || (await repoYukle(projeId), repolar.get(projeId));
-      if (!r || !r.depo) return doldur(kap, h('h3', { lang: 'en' }, 'Git'), h('p', { class: 'alanIpucu' }, t('github.depoDegil')));
-      const dallar = await api.gitIslem(projeId, 'dallar');
+      // çok depolu katta depo sekmeleri (api, web, admin...)
+      const sekmeler =
+        r && r.depolar && r.depolar.length > 1
+          ? h(
+              'div',
+              { class: 'bolmeli depoSekme', role: 'tablist' },
+              r.depolar.map((d) =>
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    role: 'tab',
+                    class: (seciliDepo.get(projeId) || 'ana') === d.id ? 'secili' : '',
+                    title: d.klasor,
+                    onclick: async () => {
+                      seciliDepo.set(projeId, d.id === 'ana' ? '' : d.id);
+                      await repoYukle(projeId);
+                      ciz_();
+                    },
+                  },
+                  ikon('dal', 12),
+                  d.ad
+                )
+              )
+            )
+          : null;
+      if (!r || !r.depo) return doldur(kap, h('h3', { lang: 'en' }, 'Git'), sekmeler, h('p', { class: 'alanIpucu' }, t('github.depoDegil')));
+      const dallar = await api.gitIslem(projeId, 'dallar', '', seciliDepo.get(projeId) || '');
       const liste = dallar && dallar.tamam ? dallar.sonuc : [r.dal];
       const dalSec = h('select', { disabled: !!calisiyor, onchange: () => islem('dalDegistir', dalSec.value, t('github.dalDegisti', { x: dalSec.value })) }, liste.map((d) => h('option', { value: d }, d)));
       dalSec.value = r.dal;
@@ -288,6 +378,7 @@ export function projelerSayfasi({ git }) {
       doldur(
         kap,
         h('h3', { lang: 'en' }, 'Git'),
+        sekmeler,
         h('div', { class: 'gitUst' }, ikon('dal', 14), dalSec, h('span', { class: 'alanIpucu' }, durum), r.githubAdres ? h('a', { href: r.githubAdres, target: '_blank', rel: 'noreferrer' }, 'GitHub') : null),
         h(
           'div',
@@ -320,7 +411,7 @@ export function projelerSayfasi({ git }) {
             )
           : null,
         r.kayitlar.length ? h('ol', { class: 'gitKayitlar' }, r.kayitlar.slice(0, 5).map((k) => h('li', null, h('code', null, k.kisa), h('span', null, k.konu), h('time', null, k.zaman)))) : null,
-        githubYonetimi(projeId, r, async () => (await repoYukle(projeId), ciz_()))
+        githubYonetimi(projeId, r, async () => (await repoYukle(projeId), ciz_()), seciliDepo.get(projeId) || '')
       );
     };
     ciz_();
@@ -597,6 +688,7 @@ export function projelerSayfasi({ git }) {
           alan(t('proje.aciklamaEtiket'), aciklamaGiris, t('proje.aciklamaIpucu', { x: s.sef.ad })),
           h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('proje.alanAdlari')), alanGiris, h('span', { class: 'alanIpucu' }, t('proje.alanIpucu')))
         ),
+        yeni ? null : depolarBolumu(taslak),
         yeni ? null : gitBolumu(taslak.id),
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.hesaplar')), h('p', { class: 'alanIpucu' }, t('proje.hesapIpucu')), hesapKap),
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.kisiler')), h('p', { class: 'alanIpucu' }, t('proje.kisiIpucu', { x: s.beyin ? s.beyin.ad : '' })), kisiKap, h('p', { class: 'alanIpucu' }, t('proje.botIpucu')), botKap),

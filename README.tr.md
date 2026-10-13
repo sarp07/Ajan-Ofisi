@@ -23,6 +23,8 @@
 
 - 🧠 **Beyin:** tek muhatabın. Bedeni yok, ona istediğin adı verirsin. Projelerin için katlar açar, her kata bir şef ve ekip önerir, kat şefleriyle konuşur ve sana tek bir rapor verir. Şef işi bitirince, soru sorunca ya da onay bekleyince beyne kendiliğinden haber gider, beyin katları yoklamaz. Cevaplarını sesli okur (bilgisayar sesi, ElevenLabs ya da OpenAI), sen de mikrofon düğmesiyle konuşarak yazarsın.
 - ⚙️ **Claude ya da OpenAI:** ekip Claude Code ya da OpenAI Codex ile çalışır. Uygulama kurulu ve giriş yapılmış olanı kendisi bulur, istersen Ayarlar'dan değiştirirsin. Abonelikle giriş ya da şifreli saklanan API anahtarı.
+- 🏙️ **Bina:** ofis gece şehrinde yüksek bir cam kule. Aktif kat yerinde durur, üst katlar yukarı ayrılır; açık katların ışıkları yanar. Asansörle ya da kata tıklayarak geçersin.
+- 📚 **Çok depolu kat:** proje monorepo değilse api, web, admin gibi ayrı depolar aynı kata eklenir; ekip hepsinde çalışır, Git paneli her depo için ayrı sekme açar.
 - 🏢 **Katlar:** her proje bir kat, her katın kendi şefi ve ekibi var. Katlar aynı anda çalışır. Kat şefleri güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar.
 - 💬 **Konuşma paneli:** şefin cevapları, sana sorduğu sorular ve onay istekleri tek yerde toplanır. Terminali takip etmen gerekmez, cevabını panelden yazarsın.
 - 🫶 **Kişisel kat:** şefi beyindir. Sağlık danışmanı, iş koçu, reklamcı, tasarımcı, yazılımcı gibi istediğin kişileri seçersin, her birinin ayrı odası olur. Odalarda bire bir, özel konuşursun. PDF ve resim eklersin, konuşmayı PDF ya da Markdown olarak indirirsin.

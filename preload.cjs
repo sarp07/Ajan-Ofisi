@@ -81,6 +81,8 @@ contextBridge.exposeInMainWorld('ofis', {
   katKlonla: cagri('kat:klonla'),
   gitIslem: cagri('git:islem'),
   githubDallar: cagri('github:dallar'),
+  depoEkle: cagri('depo:ekle'),
+  depoCikar: cagri('depo:cikar'),
   githubIslem: cagri('github:islem'),
   motorAnahtar: cagri('motor:anahtar'),
   sesListe: cagri('ses:liste'),

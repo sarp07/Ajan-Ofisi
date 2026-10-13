@@ -234,6 +234,15 @@ function projeNormalle(p, kimlikler, sefSablon) {
       }))
       .filter((x) => x.ad && (x.kanal === 'telegram' || x.numara.replace(/\D/g, '').length >= 7))
       .slice(0, 20),
+    // Ek depolar: katın ana klasörü dışındaki depolar (ör. api, web, admin ayrı repolar). Ana klasör ilk depodur.
+    depolar: (() => {
+      const gorulen = new Set([path.resolve(klasor || '.')]);
+      return (Array.isArray(ham.depolar) ? ham.depolar : [])
+        .filter((x) => x && typeof x === 'object' && typeof x.klasor === 'string' && path.isAbsolute(x.klasor))
+        .map((x) => ({ id: typeof x.id === 'string' && /^[a-z0-9]{6,20}$/.test(x.id) ? x.id : kimlik(), ad: metin(x.ad, 40).trim() || path.basename(x.klasor), klasor: path.resolve(metin(x.klasor, 1000)) }))
+        .filter((x) => !gorulen.has(x.klasor) && gorulen.add(x.klasor))
+        .slice(0, 12);
+    })(),
     // Port bloğu: katın kalıcı 100'lük port aralığı (0: henüz verilmedi) ve servislere ayrılan portlar
     portBlok: Number.isInteger(ham.portBlok) && ham.portBlok > 0 && ham.portBlok < 600 ? ham.portBlok : 0,
     portlar: Object.fromEntries(

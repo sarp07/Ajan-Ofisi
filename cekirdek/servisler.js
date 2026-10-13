@@ -135,8 +135,9 @@ export class Servisler {
   dosyaDogrula(proje) {
     const dosya = proje.servis && proje.servis.compose;
     if (!dosya) throw new Error('Bu katta seçili bir compose dosyası yok. Servisler sayfasından seç.');
-    const kok = path.resolve(proje.klasor) + path.sep;
-    if (!path.resolve(dosya).startsWith(kok)) throw new Error('Compose dosyası katın klasörünün dışında.');
+    // katın herhangi bir deposunun içinde olmalı (çok depolu katlarda api, web, admin...)
+    const kokler = [proje.klasor, ...(proje.depolar || []).map((d) => d.klasor)].filter(Boolean).map((k) => path.resolve(k) + path.sep);
+    if (!kokler.some((k) => path.resolve(dosya).startsWith(k))) throw new Error('Compose dosyası katın depolarının dışında.');
     if (!fs.existsSync(dosya)) throw new Error('Compose dosyası bulunamadı: ' + dosya);
     return dosya;
   }

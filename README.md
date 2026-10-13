@@ -23,6 +23,8 @@
 
 - 🧠 **The brain:** your single contact. It has no body and you give it any name. It opens a floor for each project, proposes a chief and a team for every floor, talks to the floor chiefs and gives you one report. When a chief finishes, asks a question or waits for approval, the brain hears about it automatically, so it never polls the floors. It reads its answers aloud (computer voice, ElevenLabs or OpenAI), and you can talk to type with the microphone button.
 - ⚙️ **Claude or OpenAI:** the team runs on Claude Code or OpenAI Codex. The app finds what is installed and signed in, and you can change it in Settings. Subscription sign in or an encrypted API key.
+- 🏙️ **Building:** the office is a tall glass tower in a night city. The active floor stays in place and the floors above lift away; floors with running sessions have their lights on. Switch with the elevator or by clicking a floor.
+- 📚 **Multi-repository floors:** if a project is not a monorepo, its separate repositories (api, web, admin) are added to the same floor; the team works in all of them and the Git panel opens a tab per repository.
 - 🏢 **Floors:** every project is a floor with its own chief and team. Floors run at the same time. Chiefs coordinate on a strong model, team members work on a model that uses less.
 - 💬 **Chat panel:** the chief's answers, questions and approval requests land in one place. No need to watch the terminal; answer from the panel.
 - 🫶 **Personal floor:** its chief is the brain. Pick the people you want, like a health advisor, business coach, advertiser, designer or developer, and each gets a room. Talk one to one in private, attach PDFs and images, and export the chat as PDF or Markdown.

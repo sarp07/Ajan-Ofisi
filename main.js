@@ -425,7 +425,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   const env = motorOrtami(motor, sirket, ortam, anahtar, { codexApiKlasoru: codexApiKlasoru() });
   let arg;
   if (motor === 'claude') {
-    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
+    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, ...ekDepolar(proje).flatMap((d) => ['--add-dir', d]), ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
     env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = sirket.takimModu ? '1' : '0';
   } else {
     if (apiModu) {
@@ -435,7 +435,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
         return { hata: 'anahtarGiris', ayrinti: String(e.message || e) };
       }
     }
-    arg = [...codexArgumanlari(sirket, cikti, { klasor, surdur: eski }), ...mcpBayraklari('codex', { adres: mcpAdresi() + '/' + proje.id })];
+    arg = [...codexArgumanlari(sirket, cikti, { klasor, surdur: eski, ekKlasorler: ekDepolar(proje) }), ...mcpBayraklari('codex', { adres: mcpAdresi() + '/' + proje.id })];
   }
   const k = katAl(proje.id);
   k.sohbet.length = 0;
@@ -647,6 +647,7 @@ const beyinIslemleri = {
       };
     }),
   onaylar: () => acikOnaylar().map((o) => ({ kod: o.kod, kat: katAdi(o.k), kim: o.m.ad || '', tur: o.m.arac === 'guven' ? 'klasör güveni' : o.m.arac === 'sahip' ? 'sahip onayı' : 'komut izni', ne: String(o.m.metin).slice(0, 300) })),
+  depoEkle: async (katId, g) => ({ depolar: await depoEkle(katId, g), not: 'Yeni depo kat oturumu yeniden başlayınca şefin erişimine girer.' }),
   kisiEkle: async (katId, { ad, numara, rol }) => {
     const p = depo.proje(katId);
     if (!p) throw new Error('Kat bulunamadı: ' + katId);
@@ -1405,6 +1406,41 @@ function tarayiciIslemleri(kapsam) {
 }
 
 // MCP kapsamı: boş ise beyin (katlar + bütün hesaplar), değilse o katın şefi (yalnızca kendi hesapları)
+// Katın depoları: ana klasör ve ek depolar. Ek depoların yalnızca var olanları oturuma açılır.
+const projeDepolari = (p) => [{ id: 'ana', ad: path.basename(p.klasor || '') || p.ad, klasor: p.klasor }, ...(p.depolar || [])];
+const ekDepolar = (p) =>
+  (p.depolar || []).map((d) => d.klasor).filter((k) => {
+    try {
+      return fs.statSync(k).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+// Kata depo ekler: var olan klasör ya da GitHub deposu (ana klasörün yanına klonlanır)
+async function depoEkle(projeId, { klasor = '', repo = '', ad = '' }) {
+  const p = depo.proje(projeId);
+  if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı: ' + projeId);
+  if (repo) {
+    if (!github.durum.girisli) throw new Error(depo.veri.dil === 'en' ? 'Connect GitHub first (Settings).' : 'Önce GitHub hesabını bağla (Ayarlar).');
+    const repoAd = String(repo).split('/').pop().replace(/\.git$/, '');
+    klasor = path.join(path.dirname(p.klasor), repoAd);
+    if (!fs.existsSync(klasor)) await repoKlonla({ gh: github.yol, env: ortam, repo: String(repo), hedef: klasor });
+  }
+  if (!klasor || !path.isAbsolute(klasor) || !fs.existsSync(klasor) || !fs.statSync(klasor).isDirectory()) throw new Error('Klasör bulunamadı: ' + klasor);
+  depo.projeKaydet({ id: p.id, depolar: [...(p.depolar || []), { ad: ad || path.basename(klasor), klasor }] });
+  gonder('sirket', gorunum());
+  return projeDepolari(depo.proje(p.id)).map((d) => `${d.ad}: ${d.klasor}`);
+}
+
+// depo: kimlik ya da ad; boşsa ana depo
+function depoKlasoru(p, depo) {
+  const liste = projeDepolari(p);
+  if (!depo) return liste[0].klasor;
+  const d = liste.find((x) => x.id === depo || x.ad.toLowerCase() === String(depo).toLowerCase());
+  if (!d) throw new Error(`Bu katta "${depo}" adlı depo yok. Depolar: ${liste.map((x) => x.ad).join(', ')}`);
+  return d.klasor;
+}
+
 const servisProjesi = (id) => {
   const p = depo.proje(id);
   if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı ya da servisi yok: ' + id);
@@ -1412,16 +1448,16 @@ const servisProjesi = (id) => {
 };
 
 // Katın deposu için git ve gh ortamı (GitHub araçları ve panel aynı yolu kullanır)
-const depoOrtami = (id) => {
+const depoOrtami = (id, depoAdi) => {
   const p = depo.proje(id);
   if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı: ' + id);
-  return { git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: p.klasor };
+  return { git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: depoKlasoru(p, depoAdi) };
 };
 
 function mcpAraclari(kapsam) {
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari(() => depoOrtami(kapsam), (soru) => sahipOnayi(kapsam, soru)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -1766,19 +1802,19 @@ function ipcKur() {
       return { hata: 'genel', ayrinti: String(e.message || e) };
     }
   });
-  h('git:islem', async (projeId, islem, deger) => {
+  h('git:islem', async (projeId, islem, deger, depoAdi) => {
     const p = depo.proje(String(projeId || ''));
     if (!p) return { hata: 'projeYok' };
     try {
-      return { tamam: true, sonuc: await gitIslem({ git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: p.klasor, islem: String(islem), deger: String(deger || '') }) };
+      return { tamam: true, sonuc: await gitIslem({ git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: depoKlasoru(p, depoAdi), islem: String(islem), deger: String(deger || '') }) };
     } catch (e) {
       return { hata: 'genel', ayrinti: String(e.message || e) };
     }
   });
   // dal, PR ve depo yönetimi (panelden)
-  h('github:dallar', async (projeId) => {
+  h('github:dallar', async (projeId, depoAdi) => {
     try {
-      return { tamam: true, dallar: await dalListesi(depoOrtami(String(projeId || ''))) };
+      return { tamam: true, dallar: await dalListesi(depoOrtami(String(projeId || ''), depoAdi)) };
     } catch (e) {
       return { hata: 'genel', ayrinti: String(e.message || e) };
     }
@@ -1787,17 +1823,49 @@ function ipcKur() {
     try {
       const izinli = ['dalSil', 'dalBirlestir', 'prAc', 'prBirlestir', 'prKapat', 'depoBilgi', 'depoArsivle', 'depoGorunurluk', 'depoAdDegistir', 'depoSil'];
       if (!izinli.includes(islem)) return { hata: 'genel' };
-      const sonuc = await githubIslem({ ...depoOrtami(String(projeId || '')), islem, s: secenek && typeof secenek === 'object' ? secenek : {} });
+      const s = secenek && typeof secenek === 'object' ? secenek : {};
+      const sonuc = await githubIslem({ ...depoOrtami(String(projeId || ''), s.depo), islem, s });
       gunluk('github', islem, String(projeId));
       return { tamam: true, sonuc };
     } catch (e) {
       return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 500) };
     }
   });
-  h('github:repo', async (projeId) => {
+  h('github:repo', async (projeId, depoAdi) => {
     const p = depo.proje(String(projeId || ''));
     if (!p) return { depo: false };
-    return repoDurumu({ git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: p.klasor });
+    let klasor;
+    try {
+      klasor = depoKlasoru(p, depoAdi);
+    } catch {
+      return { depo: false };
+    }
+    const r = await repoDurumu({ git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor });
+    return { ...r, depolar: projeDepolari(p).map((d) => ({ id: d.id, ad: d.ad, klasor: d.klasor })) };
+  });
+  // Kata depo ekleme ve çıkarma: var olan klasör ya da GitHub'dan klonlama (ana klasörün yanına)
+  h('depo:ekle', async (projeId, kaynak) => {
+    try {
+      const p = depo.proje(String(projeId || ''));
+      if (!p || p.tur === 'kisisel') return { hata: 'projeYok' };
+      let klasor = kaynak && typeof kaynak.klasor === 'string' && path.isAbsolute(kaynak.klasor) ? kaynak.klasor : '';
+      if (!klasor && (!kaynak || !kaynak.repo)) {
+        const s = await dialog.showOpenDialog(pencere, { properties: ['openDirectory', 'createDirectory'], defaultPath: path.dirname(p.klasor) });
+        if (s.canceled || !s.filePaths[0]) return { iptal: true };
+        klasor = s.filePaths[0];
+      }
+      await depoEkle(p.id, { klasor, repo: kaynak && kaynak.repo, ad: kaynak && kaynak.ad });
+      return { tamam: true, depolar: projeDepolari(depo.proje(p.id)) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) };
+    }
+  });
+  h('depo:cikar', (projeId, depoId) => {
+    const p = depo.proje(String(projeId || ''));
+    if (!p) return { hata: 'projeYok' };
+    depo.projeKaydet({ id: p.id, depolar: (p.depolar || []).filter((d) => d.id !== depoId) });
+    gonder('sirket', gorunum());
+    return { tamam: true };
   });
   // Anahtar boş gelirse silinir. Anahtar hiçbir zaman arayüze geri gönderilmez.
   // Beynin sesi. OpenAI sesi OpenAI API anahtarını (Codex anahtarı) kullanır.
@@ -1833,7 +1901,7 @@ function ipcKur() {
     const motor = await servisler.motor();
     const katlarListe = [];
     for (const p of depo.veri.projeler.filter((x) => x.tur !== 'kisisel')) {
-      const k = { id: p.id, ad: p.ad, ayar: p.servis, dosyalar: composeBul(p.klasor), servisler: [], hata: '' };
+      const k = { id: p.id, ad: p.ad, ayar: p.servis, dosyalar: projeDepolari(p).flatMap((d) => composeBul(d.klasor)), servisler: [], hata: '' };
       // compose seçilmemişse bulunan ilk dosya önerilir (kaydedilmez, sahip seçince kaydolur)
       if (!k.ayar.compose && k.dosyalar.length) k.oneri = k.dosyalar.find((d) => !/\.dev\./.test(d)) || k.dosyalar[0];
       if (motor.calisiyor && k.ayar.compose) {
@@ -1853,7 +1921,7 @@ function ipcKur() {
     const a = ayar && typeof ayar === 'object' ? ayar : {};
     const yeni = { ...p.servis };
     if (typeof a.compose === 'string') {
-      if (a.compose && !path.resolve(a.compose).startsWith(path.resolve(p.klasor) + path.sep)) return { hata: 'genel', ayrinti: 'Compose dosyası katın klasöründe olmalı.' };
+      if (a.compose && !projeDepolari(p).some((d) => path.resolve(a.compose).startsWith(path.resolve(d.klasor) + path.sep))) return { hata: 'genel', ayrinti: 'Compose dosyası katın depolarından birinde olmalı.' };
       yeni.compose = a.compose;
     }
     for (const k of ['acikTut', 'bellekMb', 'cpu']) if (k in a) yeni[k] = a[k];

@@ -50,6 +50,9 @@ const M = {
     proje: 'Üzerinde çalışılan proje',
     klasor: 'Klasör',
     alanAdlari: 'Alan adları',
+    depolar: 'Bu katın depoları',
+    anaDepo: 'ana',
+    depoNot: 'Hepsi aynı projenin parçasıdır; her depo kendi git deposudur. Bir değişiklik birden çok depoyu etkiliyorsa hepsinde birlikte yap, commit ve PR\'ları her depoda ayrı aç. GitHub araçlarında depo alanına depo adını yaz.',
     hesaplar: 'Bu projeye bağlı hesaplar',
     hesapNot: 'Bu liste yalnızca hangi hesabın bu projeye ait olduğunu gösterir. Şifre ve giriş bilgisi burada yoktur, kullanıcıdan da isteme. Giriş gereken yerde dur ve kullanıcının kendisinin giriş yapmasını iste. Bu hesaplarda paylaşım, silme ya da ayar değişikliği yapmadan önce kullanıcıdan açık onay al.',
     test: 'Test',
@@ -102,6 +105,9 @@ const M = {
     proje: 'The project being worked on',
     klasor: 'Folder',
     alanAdlari: 'Domains',
+    depolar: 'Repositories of this floor',
+    anaDepo: 'main',
+    depoNot: 'They are all parts of the same project; each one is its own git repository. If a change touches several repositories, make it in all of them together and open commits and pull requests separately in each. In the GitHub tools put the repository name in the depo field.',
     hesaplar: 'Accounts linked to this project',
     hesapNot: 'This list only shows which accounts belong to this project. It holds no passwords or login details, and you must not ask the user for them. Where a login is needed, stop and ask the user to sign in themselves. Get explicit approval from the user before posting, deleting or changing settings on these accounts.',
     test: 'Testing',
@@ -143,6 +149,8 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   const satir = [];
   if (proje.aciklama) satir.push(proje.aciklama);
   if (proje.klasor) satir.push(`${m.klasor}: ${proje.klasor}`);
+  if ((proje.depolar || []).length)
+    satir.push(`${m.depolar}:\n` + [{ ad: m.anaDepo, klasor: proje.klasor }, ...proje.depolar].map((d) => `- ${d.ad}: ${d.klasor}`).join('\n') + `\n${m.depoNot}`);
   if (proje.alanAdlari.length) satir.push(`${m.alanAdlari}: ${proje.alanAdlari.join(', ')}`);
   if (satir.length) b.push(satir.join('\n'));
   if (proje.hesaplar.length) {
@@ -369,9 +377,10 @@ function codexDerle(sirket, { hedef, skiller, port, anahtar, etiket, proje, devi
 // Codex oturumunun bağımsız değişkenleri. Kullanıcının ~/.codex ayarlarına dosya yazılmaz, her şey -c ile verilir.
 const CODEX_IZIN = { '': ['-s', 'workspace-write', '-a', 'on-request'], acceptEdits: ['-s', 'workspace-write', '-a', 'on-request'], auto: ['--approve-for-me'], plan: ['-s', 'read-only', '-a', 'on-request'], bypassPermissions: ['--dangerously-bypass-approvals-and-sandbox'] };
 
-export function codexArgumanlari(sirket, cikti, { klasor, surdur = '' }) {
+export function codexArgumanlari(sirket, cikti, { klasor, surdur = '', ekKlasorler = [] }) {
   const arg = surdur ? ['resume', surdur] : [];
   arg.push('-C', klasor, '--enable', 'multi_agent', '--dangerously-bypass-hook-trust');
+  for (const d of ekKlasorler) arg.push('--add-dir', d);
   if (cikti.koordinator) arg.push('-m', cikti.koordinator);
   arg.push(...(CODEX_IZIN[sirket.izinModu] || CODEX_IZIN['']));
   arg.push('-c', 'developer_instructions=' + JSON.stringify(cikti.talimat));

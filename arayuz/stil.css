@@ -5324,3 +5324,15 @@ body.surukleX * {
 .ortakPortGiris {
   width: 150px;
 }
+
+/* Çok depolu kat: Git panelinde depo sekmeleri */
+.depoSekme {
+  display: inline-flex;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.depoSekme button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
