@@ -40,6 +40,56 @@ export function ayarlarSayfasi({ git } = {}) {
     if (kok.isConnected) ciz();
   });
 
+  // Telegram botu: belirteç şifreli saklanır; sahip bota bir kez bağlantı adresiyle yazınca bağlanır
+  let tgDurum = null;
+  let tgTaslak = '';
+  const tgYenile = () => api.telegramDurum().then((d) => ((tgDurum = d), kok.isConnected && ciz()));
+  tgYenile();
+  api.telegramDinle(() => tgYenile());
+
+  function telegramBolumu() {
+    const t = depo.t;
+    const d = tgDurum && tgDurum.beyin;
+    if (!d) return null;
+    const giris = h('input', { type: 'password', value: tgTaslak, placeholder: '123456789:AA…', autocomplete: 'off', oninput: () => (tgTaslak = giris.value) });
+    const kaydet = async () => {
+      const r = await api.telegramToken('beyin', tgTaslak);
+      if (r && r.hata) return bildir(r.ayrinti || hataMetni(r), true);
+      tgTaslak = '';
+      tgYenile();
+    };
+    const link = d.kullanici && d.kod ? `https://t.me/${d.kullanici}?start=${d.kod}` : '';
+    const durum =
+      d.baglanti === 'bagli'
+        ? h('p', { class: 'durumSatir iyi' }, h('span', { class: 'katNokta' }), t('tg.bagli', { x: '@' + d.kullanici }))
+        : d.baglanti === 'baglaniyor'
+          ? h('p', { class: 'durumSatir' }, h('span', { class: 'donen' }), t('wp.baglaniyor'))
+          : d.baglanti === 'hata'
+            ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 15), d.hata || t('tg.hata'))
+            : null;
+    return h(
+      'div',
+      { class: 'alan wpBaglanti' },
+      h('span', { class: 'alanEtiket' }, t('tg.baslik')),
+      d.kayitli
+        ? [
+            durum,
+            d.baglanti === 'bagli'
+              ? d.sahipBagli
+                ? h('p', { class: 'ipucu' }, t('tg.sahipBagli', { x: d.sahipAd || '' }))
+                : h('div', { class: 'tgBag' }, h('p', { class: 'ipucu' }, t('tg.sahipBagla')), h('code', { class: 'yol' }, link), h('div', { class: 'satirDugme' }, h('button', { type: 'button', class: 'dugme kucuk ana', onclick: () => window.open(link) }, ikon('disari', 13), t('tg.ac')), h('button', { type: 'button', class: 'dugme kucuk', onclick: async () => bildir((await kopyala(link)) ? t('genel.kopyalandi') : t('genel.kopyala')) }, ikon('kopya', 13), t('genel.kopyala'))))
+              : null,
+            h(
+              'div',
+              { class: 'satirDugme' },
+              d.sahipBagli ? h('button', { type: 'button', class: 'dugme kucuk', onclick: () => api.telegramSahipSifirla().then(tgYenile) }, ikon('yenile', 13), t('tg.sahipSifirla')) : null,
+              h('button', { type: 'button', class: 'dugme kucuk', onclick: () => api.telegramToken('beyin', '').then(tgYenile) }, ikon('cop', 13), t('tg.kaldir'))
+            ),
+          ]
+        : [h('p', { class: 'ipucu' }, t('tg.aciklama')), h('div', { class: 'satirGiris' }, giris, h('button', { type: 'button', class: 'dugme ana', onclick: kaydet }, t('tg.kaydet')))]
+    );
+  }
+
   function whatsappBolumu() {
     const t = depo.t;
     const d = wpDurum;
@@ -144,6 +194,7 @@ export function ayarlarSayfasi({ git } = {}) {
       h('div', { class: 'formIki' }, alan(t('kur.beyinAdi'), ad), alan(t('kur.sahip'), sahip)),
       alan(t('ayar.beyinWhatsapp'), wp, t('ayar.beyinWhatsappIpucu', { x: b.ad })),
       whatsappBolumu(),
+      telegramBolumu(),
       h(
         'div',
         { class: 'alan' },

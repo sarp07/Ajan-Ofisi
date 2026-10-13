@@ -21,6 +21,7 @@ const codexModelMi = (v) => typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-
 
 const metin = (v, sinir, vars = '') => (typeof v === 'string' ? v.slice(0, sinir) : vars);
 const kimlik = () => crypto.randomBytes(5).toString('hex');
+const kod10 = () => crypto.randomBytes(6).toString('hex').slice(0, 10);
 const renkMi = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 
 export function varsayilanSirket(dil = 'tr') {
@@ -137,6 +138,11 @@ function beyinNormalle(b, dil) {
     sahip: metin(o.sahip, 40).trim(),
     // sahibin WhatsApp'taki numarası ya da sohbet adı: yalnızca bu sohbetten gelen mesajlar beyne iletilir
     whatsapp: metin(o.whatsapp, 60).trim(),
+    // Telegram: sahibin sohbet kimliği (bağlantı koduyla bir kez bağlanır) ve tek kullanımlık bağlantı kodu
+    telegram: (() => {
+      const t = o.telegram && typeof o.telegram === 'object' ? o.telegram : {};
+      return { sahipId: /^-?\d{1,20}$/.test(String(t.sahipId || '')) ? String(t.sahipId) : '', sahipAd: metin(t.sahipAd, 60).trim(), kod: /^[a-z0-9]{6,20}$/.test(String(t.kod || '')) ? t.kod : kod10() };
+    })(),
     kuruldu: !!o.kuruldu,
   };
 }
@@ -215,11 +221,15 @@ function projeNormalle(p, kimlikler, sefSablon) {
       .map((x) => ({
         id: typeof x.id === 'string' && /^[a-z0-9]{6,20}$/.test(x.id) ? x.id : kimlik(),
         ad: metin(x.ad, 40).trim(),
+        // kanal: whatsapp (numarayla) ya da telegram (kişi bota bağlantı koduyla bir kez yazar)
+        kanal: x.kanal === 'telegram' ? 'telegram' : 'whatsapp',
         numara: metin(x.numara, 30).replace(/[^\d+ ]/g, '').trim(),
+        telegramId: /^-?\d{1,20}$/.test(String(x.telegramId || '')) ? String(x.telegramId) : '',
+        kod: /^[a-z0-9]{6,20}$/.test(String(x.kod || '')) ? x.kod : kod10(),
         rol: metin(x.rol, 60).trim(),
         tanitildi: !!x.tanitildi,
       }))
-      .filter((x) => x.ad && x.numara.replace(/\D/g, '').length >= 7)
+      .filter((x) => x.ad && (x.kanal === 'telegram' || x.numara.replace(/\D/g, '').length >= 7))
       .slice(0, 20),
     // Servisler: katın compose dosyası, düşerse kendiliğinden kaldırılsın mı, kap başına bellek (MB) ve CPU sınırı
     servis: (() => {

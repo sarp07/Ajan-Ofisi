@@ -4882,14 +4882,6 @@ body.surukleX * {
 .kisiDurum.iyi {
   color: var(--iyi);
 }
-@media (max-width: 1100px) {
-  .hesapSatir.kisiSatir {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
-  }
-  .hesapSatir.kisiSatir input:nth-of-type(3) {
-    grid-column: 1 / 3;
-  }
-}
 
 /* ---------- Servisler ---------- */
 .servisIzgara {
@@ -5044,5 +5036,35 @@ body.surukleX * {
   }
   .servisAyar > .alan:first-child {
     grid-column: 1 / -1;
+  }
+}
+
+/* Telegram: kişi satırında kanal seçimi, bağlantı adresi ve proje botu */
+.hesapSatir.kisiSatir {
+  grid-template-columns: 112px minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+}
+.kisiSatir > .alanIpucu {
+  margin: 0;
+}
+.tgBag {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tgBag .yol {
+  word-break: break-all;
+}
+.tgBot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .hesapSatir.kisiSatir {
+    grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  }
+  .hesapSatir.kisiSatir > :nth-child(4) {
+    grid-column: 2 / 4;
   }
 }

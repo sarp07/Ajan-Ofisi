@@ -4,7 +4,7 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'sahip_onayi', 'whatsapp_yaz'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
 export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz'];
 
 const KURAL =
@@ -63,6 +63,11 @@ export function tarayiciAraclari(ops) {
       aciklama: 'Beynin bağlı WhatsApp numarasından mesaj, fotoğraf ya da dosya gönderir (tarayıcı gerekmez). numara verilmezse sahibe gider ve onay sorulmaz. dosya verilirse (jpg, png, pdf, mp4, mp3, docx...) metin açıklama olur. Başka numaraya yazarken, ya da sahip dışında birine dosya gönderirken araç önce sahibin onayını ister.',
       sema: nesne({ metin: yazi('Gönderilecek mesaj ya da dosyanın açıklaması'), numara: yazi('Ülke koduyla telefon numarası (ör. +90 5xx xxx xx xx). Boş bırakılırsa sahibe gider.'), dosya: yazi('Gönderilecek dosyanın tam yolu (isteğe bağlı), en çok 64 MB') }, ['metin']),
       calistir: async (g) => ops.whatsappYaz(g.numara ? String(g.numara) : '', String(g.metin), g.dosya ? String(g.dosya) : ''),
+    },
+    telegram_yaz: {
+      aciklama: 'Telegram botundan mesaj, fotoğraf ya da dosya gönderir. kime boşsa sahibe gider. kime bir proje kişisinin adıysa o kişiye gider (kişinin bota bir kez yazmış olması gerekir). Kişiye dosya göndermek sahibin onayına bağlıdır.',
+      sema: nesne({ metin: yazi('Gönderilecek mesaj ya da dosyanın açıklaması'), kime: yazi('Boş: sahip. Ya da proje kişisinin adı (ör. Su).'), dosya: yazi('Gönderilecek dosyanın tam yolu (isteğe bağlı), en çok 50 MB') }, ['metin']),
+      calistir: async (g) => ops.telegramYaz(g.kime ? String(g.kime) : '', String(g.metin), g.dosya ? String(g.dosya) : ''),
     },
     sahip_onayi: {
       aciklama: 'Sahibe evet ya da hayır sorusu sorar ve cevabını bekler (en çok 10 dakika). Soru konuşma panelinde onay kartı olarak çıkar. Dışarıya etkisi olan her işten önce kullan.',

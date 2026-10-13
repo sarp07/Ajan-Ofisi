@@ -1,5 +1,5 @@
 // Projeler sayfası: her projenin klasörü, alan adları, bağlı hesapları, test bilgisi ve kayıt defteri.
-import { h, doldur, ikon, alan, anahtar, cipGirisi } from '../dom.js';
+import { h, doldur, ikon, alan, anahtar, cipGirisi, kopyala } from '../dom.js';
 import { depo, api, dinle, bildir, hataMetni } from '../depo.js';
 import { katKurAc } from '../katKur.js';
 
@@ -326,17 +326,32 @@ export function projelerSayfasi({ git }) {
 
     // WhatsApp kişileri: beyin onlarla yalnızca bu proje hakkında konuşur, eklenince tanışma mesajı gider
     taslak.kisiler = taslak.kisiler || [];
+    // Telegram: kişinin bağlanacağı bot (projenin kendi botu yoksa beynin botu) ve proje botu belirteci
+    let tg = null;
+    let botTaslak = '';
+    api.telegramDurum().then((d) => ((tg = d), kisiCiz(), botCiz()));
+    const botKullanici = () => (tg && !yeni && tg.projeler[taslak.id] && tg.projeler[taslak.id].kullanici) || (tg && tg.beyin.kullanici) || '';
     const kisiKap = h('div', { class: 'hesaplar' });
     const kisiCiz = () =>
       doldur(
         kisiKap,
         taslak.kisiler.map((k, i) => {
           const ad = h('input', { type: 'text', value: k.ad, maxlength: '40', placeholder: t('proje.kisiAdOrnek'), 'aria-label': t('proje.kisiAd'), oninput: () => (k.ad = ad.value) });
-          const no = h('input', { type: 'tel', value: k.numara, maxlength: '30', placeholder: '+90 5xx xxx xx xx', 'aria-label': t('proje.kisiNumara'), oninput: () => (k.numara = no.value) });
+          k.kanal = k.kanal || 'whatsapp';
+          const kanal = h('select', { 'aria-label': t('proje.kisiKanal'), onchange: () => ((k.kanal = kanal.value), kisiCiz()) }, h('option', { value: 'whatsapp' }, 'WhatsApp'), h('option', { value: 'telegram' }, 'Telegram'));
+          kanal.value = k.kanal;
+          const bot = botKullanici();
+          const no =
+            k.kanal === 'telegram'
+              ? k.kod && bot
+                ? h('button', { type: 'button', class: 'dugme kucuk', title: t('proje.kisiLinkIpucu'), onclick: async () => bildir((await kopyala(`https://t.me/${bot}?start=${k.kod}`)) ? t('proje.kisiLinkKopyalandi', { x: k.ad }) : t('genel.kopyala')) }, ikon('kopya', 13), t(k.telegramId ? 'proje.kisiTgBagli' : 'proje.kisiLink'))
+                : h('span', { class: 'alanIpucu' }, t(bot ? 'proje.kisiKaydetSonra' : 'proje.kisiBotYok'))
+              : h('input', { type: 'tel', value: k.numara, maxlength: '30', placeholder: '+90 5xx xxx xx xx', 'aria-label': t('proje.kisiNumara'), oninput: () => (k.numara = no.value) });
           const rol = h('input', { type: 'text', value: k.rol || '', maxlength: '60', placeholder: t('proje.kisiRolOrnek'), 'aria-label': t('proje.kisiRol'), oninput: () => (k.rol = rol.value) });
           return h(
             'div',
             { class: 'hesapSatir kisiSatir' },
+            kanal,
             ad,
             no,
             rol,
@@ -360,6 +375,32 @@ export function projelerSayfasi({ git }) {
         )
       );
     kisiCiz();
+
+    // projenin kendi Telegram botu (isteğe bağlı): kişiler bu bota yazar
+    const botKap = h('div', { class: 'tgBot' });
+    const botCiz = () => {
+      if (yeni) return doldur(botKap, h('p', { class: 'alanIpucu' }, t('proje.botYeni')));
+      const d = tg && tg.projeler[taslak.id];
+      if (d && d.kayitli)
+        return doldur(
+          botKap,
+          h('p', { class: 'durumSatir' + (d.baglanti === 'bagli' ? ' iyi' : d.baglanti === 'hata' ? ' kotu' : '') }, d.baglanti === 'bagli' ? h('span', { class: 'katNokta' }) : ikon('ucgen', 14), d.baglanti === 'bagli' ? '@' + d.kullanici : d.hata || t('wp.baglaniyor')),
+          h('button', { type: 'button', class: 'dugme kucuk', onclick: () => api.telegramToken(taslak.id, '').then(() => api.telegramDurum()).then((x) => ((tg = x), botCiz(), kisiCiz())) }, ikon('cop', 13), t('tg.kaldir'))
+        );
+      const giris = h('input', { type: 'password', value: botTaslak, placeholder: '123456789:AA…', autocomplete: 'off', oninput: () => (botTaslak = giris.value) });
+      doldur(
+        botKap,
+        h('div', { class: 'satirGiris' }, giris, h('button', { type: 'button', class: 'dugme', onclick: async () => {
+          const r = await api.telegramToken(taslak.id, botTaslak);
+          if (r && r.hata) return bildir(r.ayrinti || hataMetni(r), true);
+          botTaslak = '';
+          tg = await api.telegramDurum();
+          botCiz();
+          kisiCiz();
+        } }, t('tg.kaydet')))
+      );
+    };
+    botCiz();
 
     // test
     const komutGiris = h('input', { type: 'text', class: 'mono', value: taslak.test.komut, maxlength: '300', placeholder: 'npm test', oninput: () => (taslak.test.komut = komutGiris.value) });
@@ -450,7 +491,7 @@ export function projelerSayfasi({ git }) {
         ),
         yeni ? null : gitBolumu(taslak.id),
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.hesaplar')), h('p', { class: 'alanIpucu' }, t('proje.hesapIpucu')), hesapKap),
-        h('section', { class: 'formBolum' }, h('h3', null, t('proje.kisiler')), h('p', { class: 'alanIpucu' }, t('proje.kisiIpucu', { x: s.beyin ? s.beyin.ad : '' })), kisiKap),
+        h('section', { class: 'formBolum' }, h('h3', null, t('proje.kisiler')), h('p', { class: 'alanIpucu' }, t('proje.kisiIpucu', { x: s.beyin ? s.beyin.ad : '' })), kisiKap, h('p', { class: 'alanIpucu' }, t('proje.botIpucu')), botKap),
         h(
           'section',
           { class: 'formBolum' },

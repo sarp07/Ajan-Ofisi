@@ -66,7 +66,7 @@ export function sohbetIsle(liste, ev, kat, z = Date.now()) {
       const metin = kes(ev.prompt, 4000);
       if (!metin || sistemIstegiMi(metin)) return false;
       // kattan ya da WhatsApp'tan iletilen haber: sahibin yazdığı değildir
-      const iletim = /^\[(Kat|WhatsApp)[^\]]*\]/.exec(metin);
+      const iletim = /^\[(Kat|WhatsApp|Telegram)[^\]]*\]/.exec(metin);
       if (iletim) return ekle(liste, { kim: 'iletim', ad: iletim[0].slice(1, -1), tur: 'mesaj', metin: metin.slice(iletim[0].length).trim() }, z);
       // sahip yazdıysa bekleyen soru ve onaylar cevaplanmış sayılır
       kapat(liste, () => true);
