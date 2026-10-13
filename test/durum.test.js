@@ -480,5 +480,14 @@ assert.equal(onayKomutu('onay veriyorum ama önce testleri çalıştırsın'), n
 assert.equal(onayKomutu('HarDress ne durumda?'), null);
 assert.equal(onayKomutu('onay 12345'), null);
 
+// yapıştırma etiketi atılır, iletilen haber sahibin mesajı sayılmaz
+{
+  const l = [];
+  sohbetIsle(l, { hook_event_name: 'UserPromptSubmit', prompt: '<pasted_content id="47cc">\n[Ofis] Yeni skill eklendi:\n- x\n</pasted_content>' }, { sef: { ad: 'Atlas' }, ajanlar: [] });
+  assert.equal(l[0].kim, 'iletim');
+  assert.equal(l[0].ad, 'Ofis');
+  assert.ok(!l[0].metin.includes('pasted_content'));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

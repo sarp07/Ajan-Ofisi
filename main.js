@@ -175,6 +175,26 @@ function oturumBitti(k, kod, bilgi) {
   oturumlariYayinla();
 }
 
+// Yeni skill eklenince ya da açılınca çalışan bütün oturumlara haber verilir: oturumu yeniden başlatmadan, ilgili iş
+// gelir gelmez skill kullanılır. Haber kuyruğa girer, motor boşa çıkınca gider; süren işi bölmez.
+function skillDuyur(idler, acildi = true) {
+  const tr = depo.veri.dil !== 'en';
+  const hepsi = new Map(skiller.liste().map((s) => [s.id, s]));
+  const secili = idler.map((id) => hepsi.get(String(id))).filter(Boolean);
+  if (!secili.length && acildi) return;
+  const satirlar = acildi
+    ? secili.map((s) => `- ${s.ad}: ${String(s.aciklama || '').slice(0, 300)}\n  ${tr ? 'Dosya' : 'File'}: ${path.join(s.klasor, 'SKILL.md')}`)
+    : idler.map((id) => `- ${id}`);
+  const metin = acildi
+    ? tr
+      ? `[Ofis] Yeni skill eklendi:\n${satirlar.join('\n')}\nBu oturumda skill listende henüz görünmeyebilir. Uyan bir iş geldiğinde önce SKILL.md dosyasını okuyup adımlarını uygula, ekibe iş verirken de bu skili belirt. Şimdilik bir şey yapma, yalnızca "tamam" de.`
+      : `[Office] New skill added:\n${satirlar.join('\n')}\nIt may not show in your skill list in this session yet. When matching work comes, first read the SKILL.md file and follow its steps, and name this skill when you hand work to the team. Do nothing for now, just say "ok".`
+    : tr
+      ? `[Ofis] Şu skill kapatıldı, artık kullanma:\n${satirlar.join('\n')}\nYalnızca "tamam" de.`
+      : `[Office] This skill was turned off, do not use it anymore:\n${satirlar.join('\n')}\nJust say "ok".`;
+  for (const k of katlar.values()) if (k.anahtar !== 'giris' && k.oturum.acik) oturumaYaz(k, metin).catch(() => {});
+}
+
 function kuruluSkiller() {
   const kapali = new Set(depo.veri.kapaliSkiller);
   return skiller.liste().map((s) => ({ id: s.id, ad: s.ad, aciklama: s.aciklama, lisans: s.lisans, kaynak: s.kaynak, kurulum: s.kurulum, etkin: !kapali.has(s.id) }));
@@ -403,7 +423,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   const env = motorOrtami(motor, sirket, ortam, anahtar, { codexApiKlasoru: codexApiKlasoru() });
   let arg;
   if (motor === 'claude') {
-    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
+    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
     env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = sirket.takimModu ? '1' : '0';
   } else {
     if (apiModu) {
@@ -497,7 +517,7 @@ async function beyinBaslat({ sutun, satir }) {
     // mesajlaşmadan gelen fotoğraf ve dosyalar bu klasörde durur: beyin onları açıp okuyabilsin
     const medya = path.join(app.getPath('userData'), 'medya');
     fs.mkdirSync(medya, { recursive: true });
-    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, ad: `${sirket.ad} · ${sirket.beyin.ad}` }), '--add-dir', medya, ...mcpBayraklari('claude', { adres: mcpAdresi(), hedef, beyin: true })];
+    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, ad: `${sirket.ad} · ${sirket.beyin.ad}` }), '--add-dir', medya, '--add-dir', skiller.klasor, ...mcpBayraklari('claude', { adres: mcpAdresi(), hedef, beyin: true })];
   } else {
     if (apiModu) {
       try {
@@ -772,7 +792,7 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
     // sohbet odası yalnızca okur (eklenen dosyalar). Çalışma odası kendi klasörüne yazar, komutlar onaya düşer.
-    arg = oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` });
+    arg = [...oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` }), '--add-dir', skiller.klasor];
     if (!calisma) {
       const i = arg.indexOf('--disallowedTools');
       const yasak = 'Bash,Edit,Write,MultiEdit,NotebookEdit,PowerShell';
@@ -1473,6 +1493,7 @@ function ipcKur() {
       try {
         await skiller.katalogdanKur(String(id));
         gonder('skill:ilerleme', { id, durum: 'tamam' });
+        skillDuyur([String(id)]);
         sonuc.push({ id, tamam: true });
       } catch (e) {
         gonder('skill:ilerleme', { id, durum: 'hata', ayrinti: String(e.message || e) });
@@ -1485,16 +1506,19 @@ function ipcKur() {
     const c = githubCoz(adres);
     if (!c) return { hata: 'adres' };
     const kurulan = await skiller.githubdanEkle(c);
+    skillDuyur(Array.isArray(kurulan) ? kurulan : [kurulan]);
     return { tamam: true, kurulan, skiller: kuruluSkiller() };
   });
   h('skill:klasor', async () => {
     const s = await dialog.showOpenDialog(pencere, { properties: ['openDirectory'] });
     if (s.canceled || !s.filePaths[0]) return { iptal: true };
     const kurulan = skiller.klasordenEkle(s.filePaths[0]);
+    skillDuyur(Array.isArray(kurulan) ? kurulan : [kurulan]);
     return { tamam: true, kurulan, skiller: kuruluSkiller() };
   });
   h('skill:yeni', (tanim) => {
     const id = skiller.yeniYaz(tanim || {});
+    skillDuyur([id]);
     return { tamam: true, id, skiller: kuruluSkiller() };
   });
   h('skill:oku', (id) => ({ tamam: true, metin: skiller.oku(String(id)) }));
@@ -1507,7 +1531,9 @@ function ipcKur() {
     const kume = new Set(depo.veri.kapaliSkiller);
     if (etkin) kume.delete(String(id));
     else kume.add(String(id));
+    const onceKapali = depo.veri.kapaliSkiller.includes(String(id));
     depo.guncelle({ kapaliSkiller: [...kume] });
+    if (!!etkin === onceKapali) skillDuyur([String(id)], !!etkin);
     return { tamam: true, skiller: kuruluSkiller() };
   });
 
