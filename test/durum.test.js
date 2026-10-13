@@ -19,6 +19,7 @@ import { SENARYO } from './senaryo.js';
 import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from '../cekirdek/kayit.js';
 import { projeMetni } from '../cekirdek/derle.js';
 import { altAjanIzle, altAjanKarari } from '../cekirdek/sinir.js';
+import { onayKomutu } from '../cekirdek/onay-komutu.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ofis-test-'));
 
@@ -464,6 +465,20 @@ assert.equal(d5.ajanlar.size, 2);
   assert.equal(altAjanKarari(ds, c, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: {} }), null);
   assert.equal(altAjanKarari(ds, c, { hook_event_name: 'PreToolUse', agent_id: 'g1', tool_name: 'Agent', tool_input: { subagent_type: 'general-purpose' } }), null, 'alt ajanın kendi çağrısı sayılmaz');
 }
+
+// ---------- telefondan onay komutları ----------
+assert.deepEqual(onayKomutu('onay 4821'), { tur: 'kod', evet: true, kod: '4821' });
+assert.deepEqual(onayKomutu('Ret 4821'), { tur: 'kod', evet: false, kod: '4821' });
+assert.deepEqual(onayKomutu('approve 1234'), { tur: 'kod', evet: true, kod: '1234' });
+assert.deepEqual(onayKomutu('Hepsini onayla'), { tur: 'hepsi', evet: true });
+assert.deepEqual(onayKomutu('ikisini de onayla'), { tur: 'hepsi', evet: true });
+assert.deepEqual(onayKomutu('approve all'), { tur: 'hepsi', evet: true });
+assert.deepEqual(onayKomutu('hepsini reddet'), { tur: 'hepsi', evet: false });
+assert.deepEqual(onayKomutu('Onaylıyorum.'), { tur: 'tek', evet: true });
+assert.deepEqual(onayKomutu('Onay veriyorum'), { tur: 'tek', evet: true });
+assert.equal(onayKomutu('onay veriyorum ama önce testleri çalıştırsın'), null, 'uzun cümle beyne gider');
+assert.equal(onayKomutu('HarDress ne durumda?'), null);
+assert.equal(onayKomutu('onay 12345'), null);
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

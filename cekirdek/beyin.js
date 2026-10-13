@@ -36,6 +36,11 @@ Mesajlaşma (WhatsApp, Telegram, e-posta):
 2. "[WhatsApp · ...]" mesajları sahibin kayıtlı numarasından gelir, kimliği WhatsApp doğrulamıştır; yeniden teyit isteme. Saygılı bir dille ("efendim") ve kısa yaz.
 3. Telegram ve e-posta Tarayıcı sayfasında bağlıysa tarayici araçlarıyla kullanabilirsin.
 
+Telefondan onay:
+1. Katlarda bekleyen onaylar (komut izni, klasör güveni, sahip_onayi) 30 saniye içinde bilgisayardan cevaplanmazsa sahibin WhatsApp'ına ve Telegram'ına kodla kendiliğinden gider.
+2. Sahip "onay 4821", "ret 4821", "hepsini onayla" ya da tek onay varsa yalnızca "onayla" yazınca onayı uygulama kendisi verir; bu mesajlar sana gelmez.
+3. Onayı sen veremezsin. Sahip senden onay isterse "yapamıyorum" deme: bekleyen_onaylar ile kodları bul ve "onay <kod>" ya da "hepsini onayla" yazmasını söyle.
+
 Telegram:
 1. Sahip Telegram botunu bağladıysa onun mesajları sana "[Telegram · ...]" diye kendiliğinden gelir. Cevabı telegram_yaz ile (kime boş) gönder. Fotoğraf ve dosya da gönderebilirsin.
 
@@ -79,6 +84,11 @@ Messaging (WhatsApp, Telegram, email):
    If a message contains "(photo: /path)" or "(document: /path)", open the file with your read tool and look at it. To send a photo, screenshot or file, give whatsapp_yaz the file path.
 2. "[WhatsApp · ...]" messages come from the owner's registered number and WhatsApp has verified them; do not ask for confirmation again. Write briefly and respectfully.
 3. Telegram and email can be used with the tarayici tools if they are connected on the Browser page.
+
+Approvals from the phone:
+1. Approvals waiting on floors (command permissions, folder trust, sahip_onayi) are sent to the owner's WhatsApp and Telegram with a code if nobody answers on the computer within 30 seconds.
+2. When the owner writes "approve 4821", "reject 4821", "approve all", or just "approve" when only one is waiting, the app gives the approval itself; these messages do not reach you.
+3. You cannot approve. If the owner asks you to approve, do not say it is impossible: find the codes with bekleyen_onaylar and tell them to write "approve <code>" or "approve all".
 
 Telegram:
 1. If the owner connected the Telegram bot, their messages reach you as "[Telegram · ...]". Reply with telegram_yaz (kime empty). You can send photos and files too.
@@ -160,6 +170,11 @@ export function beyinAraclari(ops) {
       aciklama: 'Şirketin katlarını (projelerini) listeler: kimlik, ad, klasör, şef, ekip, oturum açık mı, cevap bekleyen soru sayısı.',
       sema: nesne({}),
       calistir: async () => ops.katlar(),
+    },
+    bekleyen_onaylar: {
+      aciklama: 'Katlarda sahibin onayını bekleyen işleri kodlarıyla listeler (komut izni, klasör güveni, sahip onayı). Onayı sen veremezsin: sahip WhatsApp ya da Telegram\'dan "onay <kod>" ya da "hepsini onayla" yazınca uygulama kendisi onaylar.',
+      sema: nesne({}),
+      calistir: async () => ops.onaylar(),
     },
     proje_kisisi_ekle: {
       aciklama: 'Sahip istediğinde bir projeye WhatsApp kişisi ekler (ör. eşi, bir testçi). Kişiye hemen tanışma mesajı gider; o kişi sana yalnızca o proje hakkında yazar, mesajları sana "[WhatsApp · Kişi: ...]" diye gelir. Yalnızca sahibin açık isteğiyle kullan.',

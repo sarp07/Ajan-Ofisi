@@ -33,6 +33,7 @@ import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from './cekirdek/k
 import { MOTOR, cevirici } from './cekirdek/dil.js';
 import { WhatsappBaglantisi } from './cekirdek/whatsapp.js';
 import { TelegramBotu } from './cekirdek/telegram.js';
+import { onayKomutu } from './cekirdek/onay-komutu.js';
 import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 
@@ -118,6 +119,7 @@ function durumGonder(k, zorla = false) {
 }
 
 function sohbetGonder(k) {
+  onaylariTara(k);
   gonder('sohbet', { kat: k.anahtar, liste: k.sohbet });
   oturumlariYayinla();
 }
@@ -622,6 +624,7 @@ const beyinIslemleri = {
         kisiler: (p.kisiler || []).map((x) => `${x.ad}${x.rol ? ' (' + x.rol + ')' : ''}`),
       };
     }),
+  onaylar: () => acikOnaylar().map((o) => ({ kod: o.kod, kat: katAdi(o.k), kim: o.m.ad || '', tur: o.m.arac === 'guven' ? 'klasör güveni' : o.m.arac === 'sahip' ? 'sahip onayı' : 'komut izni', ne: String(o.m.metin).slice(0, 300) })),
   kisiEkle: async (katId, { ad, numara, rol }) => {
     const p = depo.proje(katId);
     if (!p) throw new Error('Kat bulunamadı: ' + katId);
@@ -987,6 +990,98 @@ setInterval(() => {
   if (depo) servisler.toparla(depo.veri.projeler, servisBildir).catch((e) => gunluk('servis toparlama', e));
 }, 30000);
 
+// ---------- onaylar: panelden ya da telefondan ----------
+// Bir onayı yanıtlar: komut izni (terminale tuş), klasör güveni (motorun tuş dizisi) ya da sahip_onayi aracı.
+function onayYanitla(k, mesajId, evet) {
+  if (bekleyenOnaylar.has(mesajId)) return onayCoz(k, mesajId, !!evet);
+  if (!k || !k.oturum.acik) return false;
+  const m = k.sohbet.find((x) => x.id === mesajId);
+  if (m && m.arac === 'sahip') return onayCoz(k, mesajId, !!evet);
+  if (m && m.arac === 'guven') {
+    const tuslar = evet ? GUVEN_TUSLARI[k.oturum.bilgi.motor] || ['\r'] : [ONAY_TUSU.hayir];
+    tuslar.forEach((t, i) => setTimeout(() => k.oturum.acik && k.oturum.yaz(t), i * 120));
+    m.acik = false;
+    if (!evet) m.reddedildi = true;
+    sohbetGonder(k);
+    return true;
+  }
+  k.oturum.yaz(evet ? ONAY_TUSU.evet : ONAY_TUSU.hayir);
+  return true;
+}
+
+// Telefondan onay: açık kalan her onaya 4 haneli bir kod verilir. 30 saniye içinde bilgisayardan cevaplanmazsa
+// sahibin WhatsApp'ına ve bağlıysa Telegram'ına kodla gönderilir. Sahip "onay 4821" yazınca onayı uygulamanın kendisi verir;
+// yapay zekâ araya girmez, yalnızca sahibin doğrulanmış kanalı sayılır.
+const onayKodlari = new Map(); // kod -> { kat, mesajId }
+const ONAY_BEKLE = 30000;
+
+function acikOnaylar() {
+  const liste = [];
+  for (const [kod, o] of onayKodlari) {
+    const k = katlar.get(o.kat);
+    const m = k && k.sohbet.find((x) => x.id === o.mesajId);
+    if (!k || !m || !m.acik) {
+      onayKodlari.delete(kod);
+      continue;
+    }
+    liste.push({ kod, k, m });
+  }
+  return liste;
+}
+
+const katAdi = (k) => (k.anahtar === 'beyin' ? depo.veri.beyin.ad : (depo.proje(k.anahtar) || {}).ad || k.anahtar);
+
+function onaylariTara(k) {
+  for (const m of k.sohbet) {
+    if (m.tur !== 'onay' || !m.acik || m.kod) continue;
+    let kod;
+    do kod = String(crypto.randomInt(1000, 10000));
+    while (onayKodlari.has(kod));
+    m.kod = kod;
+    onayKodlari.set(kod, { kat: k.anahtar, mesajId: m.id });
+    setTimeout(() => telefonaOnay(k, m).catch((e) => gunluk('telefona onay', e)), ONAY_BEKLE);
+  }
+}
+
+function sahibeYaz(metin) {
+  const isler = [];
+  if (whatsapp && whatsapp.durum.baglanti === 'bagli' && depo.veri.beyin.whatsapp) isler.push(whatsapp.gonder(depo.veri.beyin.whatsapp, metin));
+  const tg = depo.veri.beyin.telegram;
+  if (tg.sahipId && botlar.get('beyin')) isler.push(botlar.get('beyin').gonder(tg.sahipId, metin));
+  return Promise.allSettled(isler);
+}
+
+async function telefonaOnay(k, m) {
+  if (!m.acik || !m.kod || !onayKodlari.has(m.kod)) return;
+  const tr = depo.veri.dil !== 'en';
+  const ne = m.arac === 'guven' ? (tr ? `Klasör güveni: ${m.metin}` : `Folder trust: ${m.metin}`) : m.metin;
+  const metin = tr
+    ? `🔐 Onay bekliyor · ${katAdi(k)}${m.ad ? ' · ' + m.ad : ''}\n${String(ne).slice(0, 600)}\n\nOnaylamak için: onay ${m.kod}\nReddetmek için: ret ${m.kod}`
+    : `🔐 Approval needed · ${katAdi(k)}${m.ad ? ' · ' + m.ad : ''}\n${String(ne).slice(0, 600)}\n\nTo approve: approve ${m.kod}\nTo reject: reject ${m.kod}`;
+  await sahibeYaz(metin);
+}
+
+// Sahibin telefondan yazdığı onay komutu. İşlendiyse cevap metnini döndürür, komut değilse null.
+function sahipKomutu(metin) {
+  const c = onayKomutu(metin);
+  if (!c) return null;
+  const tr = depo.veri.dil !== 'en';
+  const yanitla = (liste, evet) => {
+    for (const o of liste) onayYanitla(o.k, o.m.id, evet);
+    const ozet = liste.map((o) => `${katAdi(o.k)} (${o.m.kod})`).join(', ');
+    return tr ? `${evet ? '✅ Onaylandı' : '⛔ Reddedildi'}: ${ozet}` : `${evet ? '✅ Approved' : '⛔ Rejected'}: ${ozet}`;
+  };
+  const liste = acikOnaylar();
+  if (c.tur === 'kod') {
+    const o = liste.find((x) => x.kod === c.kod);
+    return o ? yanitla([o], c.evet) : tr ? `Bu kodla bekleyen onay yok: ${c.kod}` : `No pending approval with code ${c.kod}`;
+  }
+  if (!liste.length) return c.tur === 'hepsi' ? (tr ? 'Bekleyen onay yok.' : 'No pending approvals.') : null;
+  if (c.tur === 'hepsi' || liste.length === 1) return yanitla(liste, c.evet);
+  // tek kelime ama birden çok onay: kodlar listelenir
+  return (tr ? 'Birden çok onay bekliyor. "onay <kod>" ya da "hepsini onayla" yaz:\n' : 'Several approvals are waiting. Write "approve <code>" or "approve all":\n') + liste.map((o) => `${o.m.kod} · ${katAdi(o.k)}: ${String(o.m.metin).slice(0, 80)}`).join('\n');
+}
+
 // ---------- prompt injection koruması ----------
 // Sahip dışındaki kişilerin mesajı beyne VERİ olarak gider: içindeki "[WhatsApp · Sahip]" gibi sahte başlıklar ve
 // mesajın sınırını taklit eden işaretler etkisizleştirilir, mesaj açıkça işaretlenmiş bir blok içinde verilir.
@@ -1079,6 +1174,8 @@ async function telegramMesaji({ bot, sohbet, kimden, kullanici, metin, baslangic
   if (ek) yazi = [yazi, ek].filter((x) => x && x.trim()).join('\n');
   if (!yazi.trim()) return;
   if (tg.sahipId && sohbet === tg.sahipId) {
+    const komut = sahipKomutu(metin);
+    if (komut) return yanit(komut);
     return beyneMesaj(`[Telegram · ${depo.veri.beyin.sahip || 'Sahip'}] ${yazi}\n(${t('Sahibin bağlı Telegram hesabından geldi. Cevabını telegram_yaz ile gönder.', "From the owner's linked Telegram account. Reply with telegram_yaz.")})`);
   }
   for (const p of depo.veri.projeler) {
@@ -1123,6 +1220,10 @@ function ekSatiri(dosyalar) {
 
 async function whatsappMesaji({ numara, metin, ses, dosyalar }) {
   const sahip = sahipNumarasiMi(numara);
+  if (sahip && !ses && !(dosyalar && dosyalar.length)) {
+    const komut = sahipKomutu(metin);
+    if (komut) return whatsapp.gonder(depo.veri.beyin.whatsapp, komut).catch(() => {});
+  }
   const kisi = sahip ? null : projeKisisi(numara);
   if (!sahip && !kisi) return; // tanınmayan numaraların mesajları beyne gitmez
   let yazi = metin;
@@ -1320,27 +1421,8 @@ function ipcKur() {
   });
   h('sohbet:onay', (kat, evet, mesajId) => {
     const k = katlar.get(katAnahtari(kat));
-    if (k && bekleyenOnaylar.has(mesajId)) {
-      onayCoz(k, mesajId, !!evet);
-      return { tamam: true };
-    }
-    if (!k || !k.oturum.acik) return { hata: 'oturumYok' };
-    const m = k.sohbet.find((x) => x.id === mesajId);
-    // sahip_onayi aracının sorusu: terminale tuş gitmez, bekleyen araç çağrısı cevaplanır
-    if (m && m.arac === 'sahip') {
-      onayCoz(k, mesajId, !!evet);
-      return { tamam: true };
-    }
-    if (m && m.arac === 'guven') {
-      // klasör güveni: motorun kendi tuş dizisi, aralıklarla
-      const tuslar = evet ? GUVEN_TUSLARI[k.oturum.bilgi.motor] || ['\r'] : [ONAY_TUSU.hayir];
-      tuslar.forEach((t, i) => setTimeout(() => k.oturum.acik && k.oturum.yaz(t), i * 120));
-      m.acik = false;
-      if (!evet) m.reddedildi = true;
-      sohbetGonder(k);
-      return { tamam: true };
-    }
-    k.oturum.yaz(evet ? ONAY_TUSU.evet : ONAY_TUSU.hayir);
+    if (!k || (!k.oturum.acik && !bekleyenOnaylar.has(mesajId))) return { hata: 'oturumYok' };
+    onayYanitla(k, mesajId, !!evet);
     return { tamam: true };
   });
 
