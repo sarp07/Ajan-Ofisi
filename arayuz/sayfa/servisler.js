@@ -1,7 +1,7 @@
 // Servisler: her katın docker compose servisleri (veritabanı, önbellek, API, web, worker) Docker Desktop üzerinden.
 // Kartlarda durum, sağlık, port, CPU ve bellek; başlat, durdur, yeniden başlat ve log. Kat başına kaynak sınırı ve
 // "düşerse yeniden kaldır" anahtarı. Ajanlar aynı işleri servis_ araçlarıyla yapar.
-import { h, doldur, ikon, anahtar } from '../dom.js';
+import { h, doldur, ikon, anahtar, kopyala } from '../dom.js';
 import { depo, api, dinle, bildir, hataMetni } from '../depo.js';
 
 export function servislerSayfasi() {
@@ -12,10 +12,15 @@ export function servislerSayfasi() {
   let log = null; // { kat, servis, metin }
   let zamanlayici = 0;
 
+  let ortak = null;
   async function yenile(sessiz) {
     if (yukleniyor) return;
     yukleniyor = true;
     if (!sessiz) ciz();
+    api.ortakDurum().then((o) => {
+      ortak = o && o.tamam ? o : null;
+      if (kok.isConnected && !kok.hidden) ciz();
+    });
     const r = await api.servisDurum();
     yukleniyor = false;
     if (r && r.tamam) durum = r;
@@ -57,6 +62,49 @@ export function servislerSayfasi() {
       );
     const gb = m.bellek ? Math.round((m.bellek / 1073741824) * 10) / 10 : 0;
     return h('p', { class: 'durumSatir iyi servisMotor' }, h('span', { class: 'katNokta' }), t('servis.dockerCalisiyor', { s: m.surum, c: m.cpu, b: gb, k: m.konteyner }));
+  }
+
+  // Ortak Postgres ve katların port blokları
+  function ortakBolumu() {
+    const t = depo.t;
+    if (!durum || !durum.motor.calisiyor || !ortak) return null;
+    const pg = ortak.pg;
+    const satir = (k) => {
+      const portGiris = h('input', { type: 'text', placeholder: t('ortak.portAdi'), maxlength: '40', class: 'ortakPortGiris' });
+      return h(
+        'li',
+        { class: 'ortakKat' },
+        h('div', { class: 'ortakKatBas' }, h('b', null, k.ad), h('code', null, k.db), k.dbVar ? h('span', { class: 'ghEtiket iyi' }, k.boyut || t('ortak.hazir')) : h('span', { class: 'ghEtiket' }, t('ortak.yok'))),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          dugme('db' + k.id, k.dbVar ? 'kopya' : 'arti', t(k.dbVar ? 'ortak.baglantiKopyala' : 'ortak.dbAc'), () =>
+            is('db' + k.id, async () => {
+              const r = await api.ortakDb(k.id);
+              if (r && r.tamam) bildir((await kopyala(r.sonuc.adres)) ? t('ortak.kopyalandi') : r.sonuc.adres);
+              return r;
+            })
+          )
+        ),
+        h(
+          'div',
+          { class: 'ortakPortlar' },
+          h('span', { class: 'alanIpucu' }, k.aralik ? t('ortak.blok', { x: k.aralik.bas, y: k.aralik.son }) : t('ortak.blokYok')),
+          Object.entries(k.portlar || {}).map(([ad, port]) => h('span', { class: 'ghEtiket' }, `${ad}: ${port}`)),
+          h('span', { class: 'gitCommit' }, portGiris, h('button', { type: 'button', class: 'dugme kucuk', onclick: () => is('p' + k.id, () => api.ortakPortAyir(k.id, portGiris.value || 'servis')) }, t('ortak.portAyir')))
+        )
+      );
+    };
+    return h(
+      'section',
+      { class: 'panel' },
+      h('header', { class: 'servisKatBas' }, h('div', null, h('h2', null, t('ortak.baslik')), h('p', { class: 'ipucu' }, t('ortak.aciklama')))),
+      pg.calisiyor
+        ? h('p', { class: 'durumSatir iyi' }, h('span', { class: 'katNokta' }), t('ortak.calisiyor', { x: pg.port }))
+        : h('div', { class: 'satirDugme' }, h('p', { class: 'durumSatir' }, t(pg.kurulu ? 'ortak.durdu' : 'ortak.kuruluDegil')), dugme('ortakKur', 'oynat', t(pg.kurulu ? 'ortak.baslat' : 'ortak.kur'), () => is('ortakKur', () => api.ortakKur()), 'ana')),
+      ortak.katlar.length ? h('ol', { class: 'ortakListe' }, ortak.katlar.map(satir)) : null,
+      ortak.testler.length ? h('p', { class: 'alanIpucu' }, t('ortak.testler', { x: ortak.testler.map((x) => x.ad).join(', ') })) : null
+    );
   }
 
   function servisKarti(k, s) {
@@ -151,7 +199,7 @@ export function servislerSayfasi() {
         : h(
             'div',
             { class: 'servisIzgara' },
-            h('div', { class: 'servisSol' }, motorBolumu(), durum.katlar.length ? durum.katlar.map(katBolumu) : h('p', { class: 'ipucu' }, t('servis.katYok'))),
+            h('div', { class: 'servisSol' }, motorBolumu(), ortakBolumu(), durum.katlar.length ? durum.katlar.map(katBolumu) : h('p', { class: 'ipucu' }, t('servis.katYok'))),
             log
               ? h(
                   'aside',

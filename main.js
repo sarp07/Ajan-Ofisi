@@ -37,6 +37,7 @@ import { TelegramBotu } from './cekirdek/telegram.js';
 import { onayKomutu } from './cekirdek/onay-komutu.js';
 import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
+import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
 const SINAMA = !!process.env.AJAN_OFIS_EKRAN;
@@ -1007,6 +1008,53 @@ function servisBildir(tur, p, adlar = [], hata = '') {
   masaustuBildir('hata', p ? `${p.ad} · ${t ? 'Services' : 'Servisler'}` : 'Docker', metin);
   gonder('servisler', {});
 }
+// Ortak Postgres: yönetici şifresi ve projelerin şifreleri şifreli depoda durur
+const ortakPg = new OrtakPostgres({ srv: servisler, sifreAl: () => anahtarlar.al('pg:yonetici'), sifreKoy: (s) => anahtarlar.koy('pg:yonetici', s) });
+
+// Katın ortak servis işlemleri (araçlar ve Servisler sayfası aynı yolu kullanır)
+function ortakIslemleri(projeId) {
+  const proje = () => {
+    const p = depo.proje(projeId);
+    if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı: ' + projeId);
+    return p;
+  };
+  const sifreAl = () => anahtarlar.al('pg:' + projeId);
+  const sifreKoy = (s) => anahtarlar.koy('pg:' + projeId, s);
+  const blok = () => {
+    const p = proje();
+    if (p.portBlok) return p.portBlok;
+    const k = blokSec(depo.veri.projeler);
+    depo.projeKaydet({ id: p.id, portBlok: k });
+    return k;
+  };
+  return {
+    db: async () => {
+      const r = await ortakPg.projeDb(proje(), sifreAl, sifreKoy);
+      gonder('servisler', {});
+      return { ...r, not: 'Bu veritabanı yalnızca bu projenindir. Bağlantıyı .env dosyasına DATABASE_URL olarak yaz; şifreyi koda ya da commit\'e koyma.' };
+    },
+    testDb: async (ad, islem) => {
+      await ortakPg.projeDb(proje(), sifreAl, sifreKoy);
+      return ortakPg.testDb(proje(), ad, islem, sifreAl());
+    },
+    testListesi: () => ortakPg.testListesi(proje()),
+    portAyir: async (ad) => {
+      const p = proje();
+      const k = blok();
+      const guncel = depo.proje(p.id);
+      if (guncel.portlar[ad]) return { ad, port: guncel.portlar[ad], aralik: portAraligi(k) };
+      const port = await portSec(k, guncel.portlar);
+      depo.projeKaydet({ id: p.id, portlar: { ...guncel.portlar, [ad]: port } });
+      gonder('servisler', {});
+      return { ad, port, aralik: portAraligi(k) };
+    },
+    portlar: () => {
+      const k = blok();
+      return { aralik: portAraligi(k), portlar: depo.proje(projeId).portlar };
+    },
+  };
+}
+
 setInterval(() => {
   if (depo) servisler.toparla(depo.veri.projeler, servisBildir).catch((e) => gunluk('servis toparlama', e));
 }, 30000);
@@ -1373,7 +1421,7 @@ const depoOrtami = (id) => {
 function mcpAraclari(kapsam) {
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...githubAraclari(() => depoOrtami(kapsam), (soru) => sahipOnayi(kapsam, soru)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari(() => depoOrtami(kapsam), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -1383,7 +1431,7 @@ const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git b
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -1836,6 +1884,40 @@ function ipcKur() {
     }
   });
   h('servis:motorAc', async () => ({ tamam: await servisler.motoruAc() }));
+  // ortak Postgres ve port blokları (Servisler sayfası)
+  h('ortak:durum', async () => {
+    try {
+      const d = await ortakPg.durum();
+      const dbler = d.calisiyor ? await ortakPg.veritabanlari().catch(() => []) : [];
+      const katlar = depo.veri.projeler
+        .filter((p) => p.tur !== 'kisisel')
+        .map((p) => ({ id: p.id, ad: p.ad, db: sqlAd(p.ad), dbVar: dbler.some((x) => x.ad === sqlAd(p.ad)), boyut: (dbler.find((x) => x.ad === sqlAd(p.ad)) || {}).boyut || '', aralik: p.portBlok ? portAraligi(p.portBlok) : null, portlar: p.portlar }));
+      return { tamam: true, pg: { kurulu: d.kurulu, calisiyor: d.calisiyor, port: d.port || null }, katlar, testler: dbler.filter((x) => /_test_/.test(x.ad)) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) };
+    }
+  });
+  h('ortak:kur', async () => {
+    try {
+      return { tamam: true, port: await ortakPg.hazirla() };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) };
+    }
+  });
+  h('ortak:db', async (id) => {
+    try {
+      return { tamam: true, sonuc: await ortakIslemleri(String(id)).db() };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) };
+    }
+  });
+  h('ortak:portAyir', async (id, ad) => {
+    try {
+      return { tamam: true, sonuc: await ortakIslemleri(String(id)).portAyir(String(ad || '').trim().slice(0, 40) || 'servis') };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) };
+    }
+  });
   // ---------- Telegram ----------
   const botDurumu = (ad) => {
     const b = botlar.get(ad);

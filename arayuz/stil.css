@@ -5288,3 +5288,39 @@ body.surukleX * {
     display: none;
   }
 }
+
+/* Ortak Postgres ve port blokları */
+.ortakListe {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ortakKat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+  background: var(--panel2);
+}
+.ortakKatBas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ortakPortlar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.ortakPortGiris {
+  width: 150px;
+}

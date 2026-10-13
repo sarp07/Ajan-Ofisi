@@ -234,6 +234,13 @@ function projeNormalle(p, kimlikler, sefSablon) {
       }))
       .filter((x) => x.ad && (x.kanal === 'telegram' || x.numara.replace(/\D/g, '').length >= 7))
       .slice(0, 20),
+    // Port bloğu: katın kalıcı 100'lük port aralığı (0: henüz verilmedi) ve servislere ayrılan portlar
+    portBlok: Number.isInteger(ham.portBlok) && ham.portBlok > 0 && ham.portBlok < 600 ? ham.portBlok : 0,
+    portlar: Object.fromEntries(
+      Object.entries(ham.portlar && typeof ham.portlar === 'object' ? ham.portlar : {})
+        .filter(([k, v]) => /^[\w.-]{1,40}$/.test(k) && Number.isInteger(v) && v > 1024 && v < 65536)
+        .slice(0, 50)
+    ),
     // Servisler: katın compose dosyası, düşerse kendiliğinden kaldırılsın mı, kap başına bellek (MB) ve CPU sınırı
     servis: (() => {
       const s = ham.servis && typeof ham.servis === 'object' ? ham.servis : {};
