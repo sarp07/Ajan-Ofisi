@@ -491,7 +491,10 @@ async function beyinBaslat({ sutun, satir }) {
   let arg;
   if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
-    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, ad: `${sirket.ad} · ${sirket.beyin.ad}` }), ...mcpBayraklari('claude', { adres: mcpAdresi(), hedef, beyin: true })];
+    // mesajlaşmadan gelen fotoğraf ve dosyalar bu klasörde durur: beyin onları açıp okuyabilsin
+    const medya = path.join(app.getPath('userData'), 'medya');
+    fs.mkdirSync(medya, { recursive: true });
+    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, ad: `${sirket.ad} · ${sirket.beyin.ad}` }), '--add-dir', medya, ...mcpBayraklari('claude', { adres: mcpAdresi(), hedef, beyin: true })];
   } else {
     if (apiModu) {
       try {
@@ -984,7 +987,16 @@ setInterval(() => {
 }, 30000);
 
 let whatsapp = null;
-async function whatsappMesaji({ numara, metin, ses }) {
+// Gelen ekler beyne dosya yoluyla bildirilir; beyin fotoğrafı ya da belgeyi okuma aracıyla açar
+function ekSatiri(dosyalar) {
+  if (!dosyalar || !dosyalar.length) return '';
+  const tr = depo.veri.dil !== 'en';
+  return dosyalar
+    .map((d) => (d.buyuk ? (tr ? `(ek: ${d.ad}, 64 MB'tan büyük olduğu için alınamadı)` : `(attachment: ${d.ad}, too large to download)`) : `(${(tr ? { foto: 'fotoğraf', video: 'video', belge: 'belge' } : { foto: 'photo', video: 'video', belge: 'document' })[d.tur]}: ${d.yol})`))
+    .join('\n');
+}
+
+async function whatsappMesaji({ numara, metin, ses, dosyalar }) {
   const sahip = sahipNumarasiMi(numara);
   const kisi = sahip ? null : projeKisisi(numara);
   if (!sahip && !kisi) return; // tanınmayan numaraların mesajları beyne gitmez
@@ -997,6 +1009,8 @@ async function whatsappMesaji({ numara, metin, ses }) {
       yazi = '(sesli mesaj geldi ama yazıya çevrilemedi: Ayarlar\'dan OpenAI ya da ElevenLabs anahtarı eklenmeli)';
     }
   }
+  const ek = ekSatiri(dosyalar);
+  if (ek) yazi = [yazi, ek].filter((x) => x && x.trim()).join('\n');
   if (!yazi.trim()) return;
   const beyin = katAl('beyin');
   if (!beyin.oturum.acik) {
@@ -1088,14 +1102,16 @@ function tarayiciIslemleri(kapsam) {
     tikla: (id, hedef) => (hesap(id), oda.tikla(id, hedef)),
     yaz: (id, girdi) => (hesap(id), oda.yaz(id, girdi)),
     onay: (soru) => sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru),
-    whatsappYaz: async (hedef, metin) => {
+    whatsappYaz: async (hedef, metin, dosya = '') => {
       if (!whatsapp || whatsapp.durum.baglanti !== 'bagli') throw new Error('WhatsApp bağlı değil. Sahibe Ayarlar > Beyin bölümünden WhatsApp\'ı bağlamasını söyle.');
       const sahip = depo.veri.beyin.whatsapp;
       const kime = hedef || sahip;
       if (!kime) throw new Error('Sahibin WhatsApp numarası Ayarlar > Beyin bölümünde girilmemiş.');
       // sahibin kendi numarası dışındaki herkese yazmak sahibin onayına bağlıdır
-      if (!sahipNumarasiMi(kime) && !projeKisisi(kime) && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
-      await whatsapp.gonder(kime, metin);
+      // sahibe her şey gider; kayıtlı kişilere yazı onaysız gider ama dosya her zaman sahibin onayına bağlıdır
+      const onayli = sahipNumarasiMi(kime) || (projeKisisi(kime) && !dosya);
+      if (!onayli && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına ${dosya ? `şu dosya (${path.basename(dosya)}) ve ` : ''}şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
+      await whatsapp.gonder(kime, metin, dosya);
       return 'Mesaj gönderildi.';
     },
   };
@@ -2001,6 +2017,12 @@ if (!app.requestSingleInstanceLock()) {
     baglantiIzle();
     whatsapp = new WhatsappBaglantisi({
       klasor: path.join(app.getPath('userData'), 'whatsapp'),
+      medya: path.join(app.getPath('userData'), 'medya', 'whatsapp'),
+      // önizleme küçük resmi: Electron'un kendi resim işleyicisiyle, ek kütüphane gerekmez
+      kucukResim: (yol) => {
+        const r = nativeImage.createFromPath(yol);
+        return r.isEmpty() ? null : r.resize({ width: 72 }).toJPEG(55);
+      },
       degisti: (d) => {
         gonder('whatsapp', d);
         // bağlantı gelince tanıtılmamış kişilere tanışma mesajı gider

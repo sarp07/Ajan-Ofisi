@@ -60,9 +60,9 @@ export function tarayiciAraclari(ops) {
       calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), secici: g.secici ? String(g.secici) : '', enter: !!g.enter }),
     },
     whatsapp_yaz: {
-      aciklama: 'Beynin bağlı WhatsApp numarasından mesaj gönderir (tarayıcı gerekmez). numara verilmezse sahibin numarasına gider ve onay sorulmaz. Başka bir numaraya yazacaksan araç önce sahibin onayını ister.',
-      sema: nesne({ metin: yazi('Gönderilecek mesaj'), numara: yazi('Ülke koduyla telefon numarası (ör. +90 5xx xxx xx xx). Boş bırakılırsa sahibe gider.') }, ['metin']),
-      calistir: async (g) => ops.whatsappYaz(g.numara ? String(g.numara) : '', String(g.metin)),
+      aciklama: 'Beynin bağlı WhatsApp numarasından mesaj, fotoğraf ya da dosya gönderir (tarayıcı gerekmez). numara verilmezse sahibe gider ve onay sorulmaz. dosya verilirse (jpg, png, pdf, mp4, mp3, docx...) metin açıklama olur. Başka numaraya yazarken, ya da sahip dışında birine dosya gönderirken araç önce sahibin onayını ister.',
+      sema: nesne({ metin: yazi('Gönderilecek mesaj ya da dosyanın açıklaması'), numara: yazi('Ülke koduyla telefon numarası (ör. +90 5xx xxx xx xx). Boş bırakılırsa sahibe gider.'), dosya: yazi('Gönderilecek dosyanın tam yolu (isteğe bağlı), en çok 64 MB') }, ['metin']),
+      calistir: async (g) => ops.whatsappYaz(g.numara ? String(g.numara) : '', String(g.metin), g.dosya ? String(g.dosya) : ''),
     },
     sahip_onayi: {
       aciklama: 'Sahibe evet ya da hayır sorusu sorar ve cevabını bekler (en çok 10 dakika). Soru konuşma panelinde onay kartı olarak çıkar. Dışarıya etkisi olan her işten önce kullan.',
