@@ -359,14 +359,14 @@ export function ayarlarSayfasi({ git } = {}) {
       var: ['uyari', t('guncel.var', { x: g.surum })],
       iniyor: ['donen', t('guncel.yuzde', { x: g.yuzde || 0 })],
       indi: ['iyi', t('guncel.hazir', { x: g.surum })],
-      hata: ['kotu', g.hataKod ? t('guncel.hataKod.' + g.hataKod) : g.hata || t('hata.genel')],
+      hata: ['kotu', g.hataKod ? t('guncel.hataKod.' + g.hataKod) : t('guncel.hataKod.genel'), g.hata],
     }[g.asama] || [null, g.etkin === false ? t('guncel.gelistirme') : t('guncel.bekliyor')];
     return h(
       'section',
       { class: 'panel' },
       h('h2', null, t('guncel.baslik')),
       h('p', { class: 'ipucu' }, t('guncel.mevcut', { x: g.mevcut || depo.bilgi.surum || '' })),
-      h('p', { class: 'durumSatir ' + (satir[0] === 'iyi' ? 'iyi' : satir[0] === 'kotu' || satir[0] === 'uyari' ? 'kotu' : '') }, satir[0] === 'donen' ? h('span', { class: 'donen' }) : ikon(satir[0] === 'iyi' ? 'tik' : satir[0] ? 'ucgen' : 'saat', 16), satir[1]),
+      h('p', { class: 'durumSatir ' + (satir[0] === 'iyi' ? 'iyi' : satir[0] === 'kotu' || satir[0] === 'uyari' ? 'kotu' : ''), title: satir[2] || '' }, satir[0] === 'donen' ? h('span', { class: 'donen' }) : ikon(satir[0] === 'iyi' ? 'tik' : satir[0] ? 'ucgen' : 'saat', 16), satir[1]),
       h(
         'div',
         { class: 'satirDugme' },

@@ -1105,7 +1105,8 @@ async function telegramYaz(kapsam, kime, metin, dosya) {
   if (!k.telegramId) throw new Error(`${k.ad} bota henüz yazmadı. Sahip ona bağlantı adresini göndermeli.`);
   const bot = kisiBotu(k.projeId);
   if (!bot) throw new Error('Telegram botu bağlı değil.');
-  if (dosya && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `Telegram'da ${k.ad} kişisine şu dosya (${path.basename(dosya)}) gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, gönderilmedi.';
+  const soru = depo.veri.dil === 'en' ? `Send this file (${path.basename(dosya || '')}) to ${k.ad} on Telegram?\n\n${metin}` : `Telegram'da ${k.ad} kişisine şu dosya (${path.basename(dosya || '')}) gönderilsin mi?\n\n${metin}`;
+  if (dosya && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru))) return 'Sahip onaylamadı, gönderilmedi.';
   await bot.gonder(k.telegramId, metin, dosya);
   return 'Mesaj gönderildi.';
 }
@@ -1222,7 +1223,11 @@ function tarayiciIslemleri(kapsam) {
       // sahibin kendi numarası dışındaki herkese yazmak sahibin onayına bağlıdır
       // sahibe her şey gider; kayıtlı kişilere yazı onaysız gider ama dosya her zaman sahibin onayına bağlıdır
       const onayli = sahipNumarasiMi(kime) || (projeKisisi(kime) && !dosya);
-      if (!onayli && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, `WhatsApp'ta ${kime} numarasına ${dosya ? `şu dosya (${path.basename(dosya)}) ve ` : ''}şu mesaj gönderilsin mi?\n\n${metin}`))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
+      const soru =
+        depo.veri.dil === 'en'
+          ? `Send ${dosya ? `this file (${path.basename(dosya)}) and ` : ''}this message to ${kime} on WhatsApp?\n\n${metin}`
+          : `WhatsApp'ta ${kime} numarasına ${dosya ? `şu dosya (${path.basename(dosya)}) ve ` : ''}şu mesaj gönderilsin mi?\n\n${metin}`;
+      if (!onayli && !(await sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru))) return 'Sahip onaylamadı, mesaj gönderilmedi.';
       await whatsapp.gonder(kime, metin, dosya);
       return 'Mesaj gönderildi.';
     },

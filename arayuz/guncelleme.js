@@ -25,7 +25,7 @@ export function guncellemeIcerik(durum, t, eylem, { kucuk = false } = {}) {
     ),
     d.asama === 'iniyor' ? h('div', { class: 'guncelCubuk', role: 'progressbar', 'aria-valuenow': String(d.yuzde || 0), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('span', { style: `width:${d.yuzde || 0}%` })) : null,
     d.asama === 'iniyor' ? h('p', { class: 'guncelNot' }, t('guncel.yuzde', { x: d.yuzde || 0 })) : null,
-    d.asama === 'hata' ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 15), d.hataKod ? t('guncel.hataKod.' + d.hataKod) : d.hata || t('hata.genel')) : null,
+    d.asama === 'hata' ? h('p', { class: 'durumSatir kotu', title: d.hata || '' }, ikon('ucgen', 15), t('guncel.hataKod.' + (d.hataKod || 'genel'))) : null,
     !kucuk && d.notlar && d.asama !== 'iniyor' ? h('div', { class: 'guncelNotlar' }, h('h3', null, t('guncel.yenilikler')), mdMetin(d.notlar)) : null,
     // küçük pencerede notların ilk birkaç maddesi
     kucuk && d.notlar && d.asama === 'var'

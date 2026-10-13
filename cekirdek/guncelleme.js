@@ -14,7 +14,7 @@ const ERTELE = 24 * 60 * 60 * 1000; // "sonra" denince 1 gün sorulmaz
 // hazirlaniyor: sürüm yayımlandı ama dosyaları henüz yüklenmedi (latest-*.yml ya da paket 404). baglanti: internet yok.
 function hataDurumu(e) {
   const ileti = String((e && e.message) || e).split('\n')[0].slice(0, 300);
-  const kod = /latest[\w-]*\.yml|404|Cannot find/i.test(ileti) ? 'hazirlaniyor' : /ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|net::ERR|network/i.test(ileti) ? 'baglanti' : '';
+  const kod = /latest[\w-]*\.yml|404|Cannot find/i.test(ileti) ? 'hazirlaniyor' : /ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|net::ERR|network/i.test(ileti) ? 'baglanti' : /signature|code sign|checksum|sha512/i.test(ileti) ? 'dogrulama' : 'genel';
   return { asama: 'hata', hata: ileti, hataKod: kod };
 }
 
