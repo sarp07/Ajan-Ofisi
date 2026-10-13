@@ -4,6 +4,7 @@ import { depo, api, dinle, bildir, hataMetni, kisiBilgi, seciliKat, terminalKati
 import { Sahne } from '../sahne.js';
 import { sessizMi, sessizYap } from '../ses.js';
 import { odaSecici } from '../odaSecici.js';
+import { petek } from '../petek.js';
 import { katKurAc } from '../katKur.js';
 import { basHarf, MISAFIR_RENK } from '../../cekirdek/kimlik.js';
 import { neZaman } from './projeler.js';
@@ -715,32 +716,55 @@ export function ofisSayfasi({ git }) {
     );
   }
 
+  // Kişisel kat: petek görünümü. Ortada beynin odası, çevresinde kişilerin odaları, kenarda yeni oda ekleme.
+  // Petek bir kez kurulur, yeniden çizimde yalnızca odalar güncellenir (kamera konumu korunur).
+  let petekKap = null;
+  let petekCizer = null;
   function odalarCiz() {
     const tt = depo.t;
     const kat = depo.sirket.projeler.find((p) => p.id === depo.sirket.sonProje);
-    const oda = (sinif, simge, ad, alt, dugme) => h('li', { class: 'binaKat oda ' + sinif }, simge, h('div', { class: 'binaAd' }, h('b', null, ad), h('span', null, alt)), dugme);
+    if (!petekKap) {
+      petekKap = h('div', { class: 'petekKap' });
+      petekCizer = petek(petekKap, {
+        etiket: tt('kisisel.petekEtiket'),
+        tikla: (o) => {
+          if (o.tur === 'beyin') gorunumSec('beyin');
+          else if (o.tur === 'ekle') {
+            odaSeciliyor = true;
+            binaCiz();
+            setTimeout(() => binaPanel.querySelector('.odaSecBolum')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+          } else gorunumSec(o.anahtar);
+        },
+      });
+    }
+    const odalar = [
+      { anahtar: 'beyin', tur: 'beyin', ad: depo.sirket.beyin.ad, alt: tt('kisisel.beyinOdasi'), acik: !!(depo.oturumlar.beyin || {}).acik },
+      ...kat.ajanlar.map((a) => ({
+        anahtar: `ozel:${kat.id}:${a.id}`,
+        tur: 'kisi',
+        ad: a.ad,
+        alt: (a.unvan || tt('ekip.unvanYok')) + ' · ' + tt(a.mod === 'calisma' ? 'oda.calisma' : 'oda.sohbet'),
+        oda: a.oda,
+        renk: a.renk,
+        gorunus: a.gorunus,
+        acik: !!(depo.oturumlar[`ozel:${kat.id}:${a.id}`] || {}).acik,
+      })),
+      { anahtar: 'ekle', tur: 'ekle', ad: tt('oda.ekleBaslik') },
+    ];
     doldur(
       binaPanel,
       h('header', { class: 'binaBas' }, h('h2', null, tt('kisisel.baslik')), h('p', null, tt('kisisel.aciklama', { x: depo.sirket.beyin.ad }))),
+      petekKap,
+      h('p', { class: 'petekIpucu' }, tt('kisisel.petekIpucu')),
+      // klavye ve ekran okuyucu için: aynı odalar düğme olarak
       h(
-        'ol',
-        { class: 'binaListe' },
-        oda('beyinOdasi', h('span', { class: 'odaSimge beyinSimge' }, ikon('beyin', 18)), depo.sirket.beyin.ad, tt('kisisel.beyinOdasi'), h('button', { type: 'button', class: 'dugme', onclick: () => gorunumSec('beyin') }, tt('kisisel.gir'))),
-        kat.ajanlar.map((a) => {
-          const o = depo.oturumlar[`ozel:${kat.id}:${a.id}`] || {};
-          return oda(
-            o.acik ? 'acik' : '',
-            h('span', { class: 'odaSimge', style: `background:${a.renk}` }, odaIkonu(a)),
-            a.ad,
-            (a.unvan || tt('ekip.unvanYok')) + ' · ' + tt(a.mod === 'calisma' ? 'oda.calisma' : 'oda.sohbet'),
-            h('button', { type: 'button', class: 'dugme ana', onclick: () => gorunumSec(`ozel:${kat.id}:${a.id}`) }, ikon('gonder', 13), tt('kisisel.gir'))
-          );
-        })
+        'ul',
+        { class: 'gizliErisim' },
+        odalar.map((o) => h('li', null, h('button', { type: 'button', onclick: () => (o.tur === 'beyin' ? gorunumSec('beyin') : o.tur === 'ekle' ? ((odaSeciliyor = true), binaCiz()) : gorunumSec(o.anahtar)) }, o.ad + (o.alt ? ' · ' + o.alt : ''))))
       ),
-      !kat.ajanlar.length || odaSeciliyor
-        ? odaSeciciBolumu(kat)
-        : h('div', { class: 'satirDugme odaEkleSatir' }, h('button', { type: 'button', class: 'dugme', onclick: () => ((odaSeciliyor = true), binaCiz()) }, ikon('arti', 14), tt('oda.ekleBaslik')))
+      !kat.ajanlar.length || odaSeciliyor ? odaSeciciBolumu(kat) : null
     );
+    petekCizer.guncelle(odalar);
   }
 
   // Özel sohbetin odası: kim olduğu, gizlilik notu, ürettiği dosyalar ve dışa aktarma

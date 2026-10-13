@@ -5141,3 +5141,32 @@ body.surukleX * {
   border: 1px solid color-mix(in srgb, var(--kotu) 40%, transparent);
   border-radius: 8px;
 }
+
+/* Kişisel kat: petek */
+.petekKap {
+  position: relative;
+  height: max(420px, calc(100vh - 330px));
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, #1B2433 0%, #12151C 75%);
+  border: 1px solid var(--cizgi);
+  user-select: none;
+}
+.petekTuval {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+.petekIpucu {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--sonuk);
+}
+.gizliErisim {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
