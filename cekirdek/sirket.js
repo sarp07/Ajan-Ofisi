@@ -49,7 +49,9 @@ export function varsayilanSirket(dil = 'tr') {
     projeler: [],
     sonProje: null,
     takimModu: true,
-    izinModu: '',
+    // otomatik: Claude güvenli işleri sormadan yapar, riskli işlerde sorar
+    izinModu: 'auto',
+    izinGecisi: 1,
     motor: 'otomatik',
     // özel sohbetlerin son oturumu: "kat:ajan" -> { oturum, motor }. Sürdürmek için.
     ozelOturumlar: {},
@@ -306,7 +308,9 @@ export function normalle(ham) {
     projeler,
     sonProje: son ? son.id : null,
     takimModu: s.takimModu !== false,
-    izinModu: IZIN_MODLARI.includes(s.izinModu) ? s.izinModu : '',
+    // bir kerelik geçiş: varsayılanda kalan "her seferinde sor" otomatik karara geçer (sahip sonra yine seçebilir)
+    izinModu: s.izinGecisi !== 1 && !s.izinModu ? 'auto' : IZIN_MODLARI.includes(s.izinModu) ? s.izinModu : '',
+    izinGecisi: 1,
     motor: MOTOR_SECIMLERI.includes(s.motor) ? s.motor : 'otomatik',
     ozelOturumlar: ozelNormalle(s.ozelOturumlar),
     giris: girisNormalle(s.giris),

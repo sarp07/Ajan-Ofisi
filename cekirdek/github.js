@@ -185,3 +185,131 @@ export async function gitIslem({ git, gh, env, klasor, islem, deger = '' }) {
       throw new Error('Bilinmeyen git işlemi');
   }
 }
+
+// ---------- dal, PR ve depo yönetimi ----------
+// Hem panelden (sahip) hem ajan araçlarından çağrılır. Korunan dallar silinemez; geri alınamayan depo silme yalnızca
+// panelden, depo adı yazılarak yapılır (ajan aracı yoktur).
+const DAL = /^(?![-.])(?!.*\.\.)[\w./-]{1,120}$/;
+const KORUNAN = new Set(['main', 'master', 'develop', 'production', 'release']);
+
+async function ghDepoAdi({ gh, env, klasor }) {
+  const s = await calistir(gh, ['repo', 'view', '--json', 'nameWithOwner,defaultBranchRef,visibility,isArchived'], { env, cwd: klasor, zamanAsimi: 20000 });
+  if (s.kod !== 0) throw new Error((s.hata || s.cikti).trim().split('\n').pop() || 'Depo GitHub\'da bulunamadı');
+  const j = JSON.parse(s.cikti);
+  return { ad: j.nameWithOwner, varsayilan: (j.defaultBranchRef && j.defaultBranchRef.name) || 'main', gorunurluk: j.visibility, arsiv: !!j.isArchived };
+}
+
+export async function dalListesi({ git, env, klasor }) {
+  const calis = (arg) => calistir(git, ['-C', klasor, ...arg], { env, zamanAsimi: 15000 });
+  const [simdiki, yerel, birlesmis, uzak] = await Promise.all([
+    calis(['branch', '--show-current']),
+    calis(['branch', '--format=%(refname:short)%09%(committerdate:relative)%09%(upstream:short)']),
+    calis(['branch', '--merged', 'HEAD', '--format=%(refname:short)']),
+    calis(['branch', '-r', '--format=%(refname:short)']),
+  ]);
+  const birlesti = new Set(birlesmis.cikti.split('\n').filter(Boolean));
+  const uzaklar = new Set(uzak.cikti.split('\n').filter(Boolean));
+  const su = simdiki.cikti.trim();
+  return yerel.cikti
+    .split('\n')
+    .filter(Boolean)
+    .map((x) => {
+      const [ad, zaman, yukari] = x.split('\t');
+      return { ad, zaman, uzakta: !!yukari || uzaklar.has('origin/' + ad), birlesti: birlesti.has(ad) && ad !== su, simdiki: ad === su, korunan: KORUNAN.has(ad) };
+    });
+}
+
+export async function githubIslem({ git, gh, env, klasor, islem, s = {} }) {
+  if (!git) throw new Error('git bulunamadı');
+  const calis = async (arg, z = 120000) => {
+    const r = await calistir(git, ['-C', klasor, ...arg], { env, zamanAsimi: z });
+    if (r.kod !== 0) throw new Error((r.hata || r.cikti).trim().split('\n').slice(-2).join(' ') || 'git hatası');
+    return (r.cikti + '\n' + r.hata).trim();
+  };
+  const ghCalis = async (arg, z = 120000) => {
+    if (!gh) throw new Error('GitHub hesabı bağlı değil (Ayarlar > GitHub).');
+    const r = await calistir(gh, arg, { env, cwd: klasor, zamanAsimi: z });
+    if (r.kod !== 0) {
+      const m = (r.hata || r.cikti).trim().split('\n').slice(-2).join(' ');
+      if (/delete_repo/.test(m)) throw new Error('GitHub depo silme yetkisi yok. Bir kez terminalde şunu çalıştır: gh auth refresh -h github.com -s delete_repo');
+      throw new Error(m || 'GitHub hatası');
+    }
+    return r.cikti.trim();
+  };
+  const dal = String(s.dal || '');
+  switch (islem) {
+    case 'dalSil': {
+      if (!DAL.test(dal)) throw new Error('Geçersiz dal adı');
+      const liste = await dalListesi({ git, env, klasor });
+      const d = liste.find((x) => x.ad === dal);
+      if (!d && !s.uzak) throw new Error('Dal bulunamadı: ' + dal);
+      if (KORUNAN.has(dal)) throw new Error(`${dal} korunan bir daldır, silinemez.`);
+      if (d && d.simdiki) throw new Error('Şu an açık olan dal silinemez. Önce başka bir dala geç.');
+      if (gh) {
+        const v = await ghDepoAdi({ gh, env, klasor }).catch(() => null);
+        if (v && v.varsayilan === dal) throw new Error(`${dal} deponun varsayılan dalı, silinemez.`);
+      }
+      if (d && !d.birlesti && !s.zorla) throw new Error(`${dal} dalı birleştirilmemiş değişiklikler içeriyor. Yine de silmek için "zorla" seç.`);
+      const cikti = [];
+      if (d) cikti.push(await calis(['branch', s.zorla ? '-D' : '-d', dal]));
+      if (s.uzak) cikti.push(await calis(['push', 'origin', '--delete', dal]));
+      return cikti.join('\n');
+    }
+    case 'dalBirlestir': {
+      // seçilen dal şu anki dala birleştirilir; çakışma olursa birleştirme geri alınır
+      if (!DAL.test(dal)) throw new Error('Geçersiz dal adı');
+      try {
+        return await calis(['merge', '--no-ff', '--no-edit', dal]);
+      } catch (e) {
+        await calis(['merge', '--abort']).catch(() => {});
+        throw new Error('Birleştirmede çakışma çıktı, geri alındı: ' + e.message);
+      }
+    }
+    case 'prAc': {
+      const baslik = String(s.baslik || '').trim();
+      if (!baslik) throw new Error('PR başlığı boş');
+      const yukari = await calistir(git, ['-C', klasor, 'rev-parse', '--abbrev-ref', '@{upstream}'], { env, zamanAsimi: 10000 });
+      await calis(yukari.kod === 0 ? ['push'] : ['push', '-u', 'origin', 'HEAD']);
+      const arg = ['pr', 'create', '--title', baslik, '--body', String(s.govde || '')];
+      if (s.taban && DAL.test(s.taban)) arg.push('--base', s.taban);
+      if (s.taslak) arg.push('--draft');
+      return ghCalis(arg);
+    }
+    case 'prBirlestir': {
+      const no = Number(s.no);
+      if (!Number.isInteger(no) || no < 1) throw new Error('Geçersiz PR numarası');
+      const yontem = ['merge', 'squash', 'rebase'].includes(s.yontem) ? s.yontem : 'squash';
+      return ghCalis(['pr', 'merge', String(no), '--' + yontem, ...(s.dalSil !== false ? ['--delete-branch'] : [])]);
+    }
+    case 'prKapat': {
+      const no = Number(s.no);
+      if (!Number.isInteger(no) || no < 1) throw new Error('Geçersiz PR numarası');
+      return ghCalis(['pr', 'close', String(no), ...(s.yorum ? ['--comment', String(s.yorum).slice(0, 1000)] : [])]);
+    }
+    case 'depoBilgi':
+      return ghDepoAdi({ gh, env, klasor });
+    case 'depoArsivle': {
+      const v = await ghDepoAdi({ gh, env, klasor });
+      return ghCalis(['repo', s.geriAl ? 'unarchive' : 'archive', v.ad, '--yes']);
+    }
+    case 'depoGorunurluk': {
+      const v = await ghDepoAdi({ gh, env, klasor });
+      const hedef = s.gorunurluk === 'public' ? 'public' : 'private';
+      return ghCalis(['repo', 'edit', v.ad, '--visibility', hedef, '--accept-visibility-change-consequences']);
+    }
+    case 'depoAdDegistir': {
+      const yeni = String(s.ad || '').trim();
+      if (!/^[\w.-]{1,100}$/.test(yeni)) throw new Error('Geçersiz depo adı');
+      const v = await ghDepoAdi({ gh, env, klasor });
+      return ghCalis(['repo', 'rename', yeni, '--repo', v.ad, '--yes']);
+    }
+    case 'depoSil': {
+      // geri alınamaz: sahip deponun tam adını (sahip/ad) yazarak onaylamalı
+      const v = await ghDepoAdi({ gh, env, klasor });
+      if (String(s.onayAdi || '').trim() !== v.ad) throw new Error(`Silmek için deponun tam adını yaz: ${v.ad}`);
+      return ghCalis(['repo', 'delete', v.ad, '--yes']);
+    }
+    default:
+      throw new Error('Bilinmeyen GitHub işlemi');
+  }
+}

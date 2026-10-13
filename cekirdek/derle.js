@@ -61,6 +61,8 @@ const M = {
     tarayiciKurali: 'Web işleri için yalnızca uygulamanın kendi tarayıcısını kullan (tarayici_ araçları): Apple Developer, App Store Connect, Google Play Console, GitHub, Vercel gibi bağlı hesaplar ve projenin Test sekmesi orada açıktır, girişler hazırdır. Asla yeni Chrome, Safari ya da başka bir tarayıcı penceresi açma; open, start, xdg-open komutlarıyla adres açma, Playwright ya da Puppeteer ile tarayıcı başlatma. Gereken hesap listede yoksa sahibe Tarayıcı sayfasından eklemesini söyle. WhatsApp tarayıcıda kullanılmaz.',
     skillOncelik: 'Skill öncelikli çalışma',
     skillOncelikKurali: 'Kabiliyetlerin skillerle güçlendirildi; işi skilleri temel alarak kur. Her işe başlamadan önce sana atanan ve şirkette açık olan skillere bak. Uyan bir skill varsa önce onu çalıştır ya da SKILL.md dosyasını okuyup adımlarını uygula, sonra kendi bilginle tamamla. Ekibe iş verirken ilgili skilin adını da yaz. Raporunda hangi skilleri kullandığını belirt. Oturum sırasında "[Ofis] Yeni skill eklendi" haberi gelirse o skili listene ekle ve uyan ilk işte kullan; "kapatıldı" haberi gelirse kullanmayı bırak.',
+    githubBaslik: 'GitHub',
+    githubKurali: 'Dal, PR ve depo işleri için github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat ve github_depo araçlarını kullan. İş bitince kendi açtığın ve birleşen dalları sil. PR birleştirme ve depo ayarı değişikliği sahibin onayına gider; depo silme senin işin değildir.',
     surumler: 'Sürüm numaraları',
     surumKurali: 'Sürüm numarası ANA.KÜÇÜK.YAMA biçimindedir (anlamsal sürümleme). Yalnızca hata düzeltmesi: son rakam artar (1.1.0 → 1.1.1). Geriye uyumlu yeni özellik: orta rakam artar, son rakam sıfırlanır (1.1.1 → 1.2.0). Uyumu bozan büyük değişiklik: ilk rakam artar, diğerleri sıfırlanır (1.2.0 → 2.0.0). Rakamlar 9\'da devretmez, 1.0.9\'dan sonra 1.0.10 gelebilir. Mağaza uygulamalarında build numarası (iOS CFBundleVersion, Android versionCode) her yüklemede artar ve sürüm numarasından ayrıdır. Sürümü değiştirmeden önce hangi türde olduğunu ve nedenini sahibe söyle.',
     surecler: 'Süreçler',
@@ -109,6 +111,8 @@ const M = {
     tarayiciKurali: 'For web work use only the app\'s own browser (the tarayici_ tools): linked accounts such as Apple Developer, App Store Connect, Google Play Console, GitHub and Vercel, and the project\'s Test tab are open there and already signed in. Never open a new Chrome, Safari or any other browser window; do not open addresses with open, start or xdg-open, and do not launch a browser with Playwright or Puppeteer. If an account you need is missing, ask the owner to add it on the Browser page. WhatsApp is not used in the browser.',
     skillOncelik: 'Skill first',
     skillOncelikKurali: 'Your abilities are extended with skills; build the work on top of them. Before starting any job, look at the skills assigned to you and the ones turned on in the company. If one matches, run it first or read its SKILL.md and follow its steps, then finish with your own knowledge. When you hand work to the team, name the relevant skill. Say which skills you used in your report. If an "[Office] New skill added" message arrives during the session, add that skill to your list and use it on the first matching job; if a "turned off" message arrives, stop using it.',
+    githubBaslik: 'GitHub',
+    githubKurali: 'For branches, pull requests and repository work use the github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat and github_depo tools. When work is done, delete the branches you opened that were merged. Merging a PR and changing repository settings go to the owner for approval; deleting a repository is never your job.',
     surumler: 'Version numbers',
     surumKurali: 'Version numbers are MAJOR.MINOR.PATCH (semantic versioning). Bug fixes only: the last number goes up (1.1.0 → 1.1.1). Backward compatible new features: the middle number goes up and the last resets (1.1.1 → 1.2.0). Big breaking changes: the first number goes up and the others reset (1.2.0 → 2.0.0). Numbers do not roll over at 9; 1.0.10 can follow 1.0.9. For store apps the build number (iOS CFBundleVersion, Android versionCode) goes up on every upload and is separate from the version. Before changing the version, tell the owner which kind it is and why.',
     surecler: 'Processes',
@@ -151,6 +155,7 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   b.push(`### ${m.skillOncelik}\n\n${m.skillOncelikKurali}`);
   b.push(`### ${m.surecler}\n\n${m.surecKurali}`);
   b.push(`### ${m.surumler}\n\n${m.surumKurali}`);
+  b.push(`### ${m.githubBaslik}\n\n${m.githubKurali}`);
   if (tam && proje.notlar.trim()) b.push(`### ${m.notlar}\n\n${proje.notlar.trim()}`);
   return b.length > 1 ? b.join('\n\n') : '';
 }

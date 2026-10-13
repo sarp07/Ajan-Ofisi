@@ -5068,3 +5068,76 @@ body.surukleX * {
     grid-column: 2 / 4;
   }
 }
+
+/* GitHub yönetimi: dallar, PR'lar, depo */
+.ghYonetim {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ghListe {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ghDal {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--cizgi);
+  border-radius: 8px;
+  background: var(--panel2);
+  min-width: 0;
+}
+.ghDal.simdiki {
+  border-color: var(--cizgi2);
+}
+.ghDal > code,
+.ghDal > a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ghEtiketler {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ghEtiket {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--cizgi2);
+  color: var(--soluk);
+}
+.ghEtiket.iyi {
+  color: var(--iyi);
+  border-color: color-mix(in srgb, var(--iyi) 40%, transparent);
+}
+.ghForm,
+.ghDepo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dugme.tehlike {
+  background: color-mix(in srgb, var(--kotu) 18%, transparent);
+  border-color: color-mix(in srgb, var(--kotu) 55%, transparent);
+  color: var(--kotu);
+}
+.dugme.cizgili {
+  color: var(--soluk);
+}
+.tehlikeKutu {
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--kotu) 40%, transparent);
+  border-radius: 8px;
+}

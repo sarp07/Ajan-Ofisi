@@ -244,7 +244,10 @@ const skillMd = fs.readFileSync(path.join(cikti.eklenti, 'skills', 'bir', 'SKILL
 assert.ok(skillMd.includes('"${CLAUDE_PLUGIN_ROOT}/skills/bir/scripts/a.py"') && !skillMd.includes('.claude/skills'), 'eklenti yolu düzeltilir');
 assert.equal(fs.existsSync(path.join(cikti.eklenti, 'skills', 'bir', '.ofis.json')), false);
 assert.deepEqual(oturumArgumanlari(sirket, { ...cikti, oturumId: 'u' }).slice(0, 6), ['--plugin-dir', cikti.eklenti, '--append-system-prompt-file', cikti.sefDosya, '--session-id', 'u']);
-assert.deepEqual(oturumArgumanlari(sirket, { ...cikti, oturumId: 'u' }).slice(-4), ['--model', 'opus', '--disallowedTools', 'mcp__claude-in-chrome,Bash(pkill:*),Bash(killall:*),Bash(docker:*),Bash(docker-compose:*)'], 'şef varsayılan olarak güçlü modelle açılır, harici tarayıcı kullanmaz');
+assert.deepEqual(oturumArgumanlari(sirket, { ...cikti, oturumId: 'u' }).slice(-6), ['--model', 'opus', '--permission-mode', 'auto', '--disallowedTools', 'mcp__claude-in-chrome,Bash(pkill:*),Bash(killall:*),Bash(docker:*),Bash(docker-compose:*)'], 'şef varsayılan olarak güçlü modelle ve otomatik izin moduyla açılır, harici tarayıcı kullanmaz');
+assert.equal(normalle({ izinModu: '' }).izinModu, 'auto', 'varsayılanda kalan eski ayar bir kez otomatiğe geçer');
+assert.equal(normalle({ izinModu: '', izinGecisi: 1 }).izinModu, '', 'geçişten sonra seçilen "her seferinde sor" korunur');
+assert.equal(normalle({ izinModu: 'plan' }).izinModu, 'plan');
 assert.match(ajanMd, /\nmodel: sonnet\n/, 'çalışan varsayılan olarak dengeli modelle çalışır');
 // etiketli olay adresi: hangi oturumdan geldiği ayrılır
 const etiketli = derle(sirket, { hedef: path.join(tmp, 'calisma'), skiller: [], port: 2, anahtar: 'b', etiket: 'o1' });

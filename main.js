@@ -18,7 +18,8 @@ import { AnahtarDeposu } from './cekirdek/anahtarlar.js';
 import { mcpIsle } from './cekirdek/mcp.js';
 import { Guncelleyici } from './cekirdek/guncelleme.js';
 import { testAraclari, TEST_ARAC_ADLARI, testDurumu, iosAc, iosKapat, iosGoruntu, androidBaslat, androidGoruntu } from './cekirdek/test-alani.js';
-import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem } from './cekirdek/github.js';
+import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem, githubIslem, dalListesi } from './cekirdek/github.js';
+import { githubAraclari, GITHUB_ARAC_ADLARI } from './cekirdek/github-araclari.js';
 import { sesListesi, sesUret, yaziyaCevir } from './cekirdek/ses.js';
 import { beyinAraclari, beyinTalimati, MCP_ADI } from './cekirdek/beyin.js';
 import { sablonBul } from './cekirdek/sablonlar.js';
@@ -1362,22 +1363,33 @@ const servisProjesi = (id) => {
   return p;
 };
 
+// Katın deposu için git ve gh ortamı (GitHub araçları ve panel aynı yolu kullanır)
+const depoOrtami = (id) => {
+  const p = depo.proje(id);
+  if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı: ' + id);
+  return { git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: p.klasor };
+};
+
 function mcpAraclari(kapsam) {
-  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }) };
+  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...githubAraclari(() => depoOrtami(kapsam), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
+// Yalnızca okuyan komutlar: hangi izin modunda olursa olsun sorulmaz (değiştiren, silen, ağa yazan komut yok)
+const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git branch', 'git rev-parse', 'git remote -v', 'git worktree list', 'git ls-files', 'git blame', 'ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'tree', 'which', 'file', 'stat', 'du', 'npm test', 'npm run test', 'npm run lint', 'npm run typecheck', 'npm ls', 'npx tsc --noEmit', 'gh pr list', 'gh pr view', 'gh pr status', 'gh pr checks', 'gh run list', 'gh run view', 'gh repo view', 'gh issue list', 'gh issue view'].map((k) => `Bash(${k}:*)`);
+
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
     fs.writeFileSync(dosya, JSON.stringify({ mcpServers: { [MCP_ADI]: { type: 'http', url: adres } } }, null, 2));
-    return ['--mcp-config', dosya, '--allowedTools', serbest.map((a) => `mcp__${MCP_ADI}__${a}`).join(',')];
+    // okuma amaçlı komutlar her izin modunda sorulmaz
+    return ['--mcp-config', dosya, '--allowedTools', [...serbest.map((a) => `mcp__${MCP_ADI}__${a}`), ...OKUMA_KOMUTLARI].join(',')];
   }
   // sahip_onayi sahibin cevabını 10 dakikaya kadar bekler: araç zaman aşımı buna göre uzatılır (varsayılan 60 sn)
   const arg = ['-c', `mcp_servers.${MCP_ADI}.url=${JSON.stringify(adres)}`, '-c', `mcp_servers.${MCP_ADI}.default_tools_approval_mode="approve"`, '-c', `mcp_servers.${MCP_ADI}.tool_timeout_sec=900`];
@@ -1713,6 +1725,25 @@ function ipcKur() {
       return { tamam: true, sonuc: await gitIslem({ git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: p.klasor, islem: String(islem), deger: String(deger || '') }) };
     } catch (e) {
       return { hata: 'genel', ayrinti: String(e.message || e) };
+    }
+  });
+  // dal, PR ve depo yönetimi (panelden)
+  h('github:dallar', async (projeId) => {
+    try {
+      return { tamam: true, dallar: await dalListesi(depoOrtami(String(projeId || ''))) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e) };
+    }
+  });
+  h('github:islem', async (projeId, islem, secenek) => {
+    try {
+      const izinli = ['dalSil', 'dalBirlestir', 'prAc', 'prBirlestir', 'prKapat', 'depoBilgi', 'depoArsivle', 'depoGorunurluk', 'depoAdDegistir', 'depoSil'];
+      if (!izinli.includes(islem)) return { hata: 'genel' };
+      const sonuc = await githubIslem({ ...depoOrtami(String(projeId || '')), islem, s: secenek && typeof secenek === 'object' ? secenek : {} });
+      gunluk('github', islem, String(projeId));
+      return { tamam: true, sonuc };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e).slice(0, 500) };
     }
   });
   h('github:repo', async (projeId) => {

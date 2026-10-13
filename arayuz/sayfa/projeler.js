@@ -147,6 +147,114 @@ export function projelerSayfasi({ git }) {
   }
 
   // ---------- git ----------
+  // GitHub yönetimi: dallar (sil, birleştir), PR'lar (aç, birleştir, kapat), depo (gizli/açık, arşiv, ad, sil).
+  // Tehlikeli düğmeler önce "emin misin" durumuna geçer; depo silmek için deponun tam adı yazılır.
+  function githubYonetimi(projeId, r, yenile) {
+    const t = depo.t;
+    const kap = h('div', { class: 'ghYonetim' });
+    let dallar = null;
+    let depoB = null;
+    let emin = ''; // onay bekleyen düğmenin anahtarı
+    let calisan = '';
+    let prAcik = false;
+    let silAcik = false;
+    const yap = async (anahtar, islem, secenek, basari) => {
+      calisan = anahtar;
+      emin = '';
+      ciz();
+      const s = await api.githubIslem(projeId, islem, secenek);
+      calisan = '';
+      if (!s || s.hata) bildir((s && s.ayrinti) || hataMetni(s), true);
+      else bildir(basari || t('github.tamam'));
+      await yukle();
+      await yenile();
+    };
+    const tehlikeli = (anahtar, yazi, eminYazi, fn, sinif = '') =>
+      h('button', { type: 'button', class: 'dugme kucuk ' + sinif + (emin === anahtar ? ' tehlike' : ''), disabled: !!calisan, onclick: () => (emin === anahtar ? fn() : ((emin = anahtar), ciz())) }, calisan === anahtar ? h('span', { class: 'donen' }) : null, emin === anahtar ? eminYazi : yazi);
+    async function yukle() {
+      const d = await api.githubDallar(projeId);
+      dallar = d && d.tamam ? d.dallar : [];
+      if (r.githubAdres && (depo.bilgi.github || {}).girisli) {
+        const b = await api.githubIslem(projeId, 'depoBilgi', {});
+        depoB = b && b.tamam ? b.sonuc : null;
+      }
+      ciz();
+    }
+    function ciz() {
+      const girisli = (depo.bilgi.github || {}).girisli && r.githubAdres;
+      const dalSatir = (d) =>
+        h(
+          'li',
+          { class: 'ghDal' + (d.simdiki ? ' simdiki' : '') },
+          h('code', null, d.ad),
+          h('span', { class: 'ghEtiketler' }, d.simdiki ? h('span', { class: 'ghEtiket iyi' }, t('github.dalSimdiki')) : null, d.korunan ? h('span', { class: 'ghEtiket' }, t('github.dalKorunan')) : null, d.birlesti ? h('span', { class: 'ghEtiket' }, t('github.dalBirlesti')) : null, d.uzakta ? h('span', { class: 'ghEtiket' }, 'GitHub') : null, h('span', { class: 'alanIpucu' }, d.zaman)),
+          d.simdiki || d.korunan
+            ? null
+            : h(
+                'span',
+                { class: 'satirDugme' },
+                tehlikeli('b:' + d.ad, t('github.birlestir'), t('github.birlestirEmin', { x: r.dal }), () => yap('b:' + d.ad, 'dalBirlestir', { dal: d.ad }, t('github.birlesti', { x: d.ad, y: r.dal }))),
+                tehlikeli('s:' + d.ad, t('github.sil'), d.birlesti ? t('github.silEmin') : t('github.silZorla'), () => yap('s:' + d.ad, 'dalSil', { dal: d.ad, uzak: d.uzakta, zorla: !d.birlesti }, t('github.silindi', { x: d.ad })), 'cizgili')
+              )
+        );
+      const prSatir = (p) =>
+        h(
+          'li',
+          { class: 'ghDal' },
+          h('a', { href: p.adres, target: '_blank', rel: 'noreferrer' }, `#${p.no} ${p.baslik}`),
+          h('span', { class: 'ghEtiketler' }, p.taslak ? h('span', { class: 'ghEtiket' }, t('github.taslak')) : null, h('code', null, p.dal)),
+          h(
+            'span',
+            { class: 'satirDugme' },
+            tehlikeli('pb:' + p.no, t('github.birlestir'), t('github.prBirlestirEmin'), () => yap('pb:' + p.no, 'prBirlestir', { no: p.no, yontem: 'squash' }, t('github.prBirlesti', { x: p.no }))),
+            tehlikeli('pk:' + p.no, t('github.kapat'), t('github.kapatEmin'), () => yap('pk:' + p.no, 'prKapat', { no: p.no }, t('github.prKapandi', { x: p.no })), 'cizgili')
+          )
+        );
+      const prForm = () => {
+        const baslik = h('input', { type: 'text', placeholder: t('github.prBaslik'), maxlength: '200' });
+        const govde = h('textarea', { rows: '3', placeholder: t('github.prGovde'), maxlength: '4000' });
+        setTimeout(() => baslik.focus(), 0);
+        return h('div', { class: 'ghForm' }, baslik, govde, h('div', { class: 'satirDugme' }, h('button', { type: 'button', class: 'dugme ana', disabled: !!calisan, onclick: () => (baslik.value.trim() ? ((prAcik = false), yap('prAc', 'prAc', { baslik: baslik.value.trim(), govde: govde.value }, t('github.prAcildi'))) : baslik.focus()) }, t('github.prAc')), h('button', { type: 'button', class: 'dugme', onclick: () => ((prAcik = false), ciz()) }, t('genel.vazgec'))));
+      };
+      const depoBolumu = () => {
+        if (!depoB) return null;
+        const gizli = depoB.gorunurluk !== 'PUBLIC';
+        const adGiris = h('input', { type: 'text', placeholder: depoB.ad.split('/')[1], maxlength: '100' });
+        const silGiris = h('input', { type: 'text', placeholder: depoB.ad, maxlength: '140' });
+        return h(
+          'div',
+          { class: 'ghDepo' },
+          h('span', { class: 'alanEtiket' }, t('github.depo')),
+          h('p', { class: 'alanIpucu' }, `${depoB.ad} · ${gizli ? t('github.gizli') : t('github.acik')}${depoB.arsiv ? ' · ' + t('github.arsivde') : ''}`),
+          h(
+            'div',
+            { class: 'satirDugme' },
+            tehlikeli('gor', gizli ? t('github.acikYap') : t('github.gizliYap'), t('github.gorunurlukEmin'), () => yap('gor', 'depoGorunurluk', { gorunurluk: gizli ? 'public' : 'private' })),
+            tehlikeli('ars', depoB.arsiv ? t('github.arsivdenCikar') : t('github.arsivle'), t('github.arsivEmin'), () => yap('ars', 'depoArsivle', { geriAl: depoB.arsiv })),
+            h('button', { type: 'button', class: 'dugme kucuk cizgili', onclick: () => ((silAcik = !silAcik), ciz()) }, t('github.depoSil'))
+          ),
+          h('div', { class: 'gitCommit' }, adGiris, h('button', { type: 'button', class: 'dugme', disabled: !!calisan, onclick: () => (adGiris.value.trim() ? yap('ad', 'depoAdDegistir', { ad: adGiris.value.trim() }, t('github.adDegisti')) : adGiris.focus()) }, t('github.adDegistir'))),
+          silAcik ? h('div', { class: 'ghForm tehlikeKutu' }, h('p', { class: 'alanIpucu' }, t('github.silUyari', { x: depoB.ad })), h('div', { class: 'gitCommit' }, silGiris, h('button', { type: 'button', class: 'dugme tehlike', disabled: !!calisan, onclick: () => yap('depoSil', 'depoSil', { onayAdi: silGiris.value.trim() }, t('github.depoSilindi')) }, t('github.depoSilOnay')))) : null
+        );
+      };
+      doldur(
+        kap,
+        dallar === null
+          ? h('p', { class: 'durumSatir' }, h('span', { class: 'donen' }), t('github.okunuyor'))
+          : [
+              h('span', { class: 'alanEtiket' }, t('github.dallar')),
+              h('ol', { class: 'ghListe' }, dallar.map(dalSatir)),
+              girisli ? h('span', { class: 'alanEtiket' }, t('github.prler')) : null,
+              girisli && r.prler && r.prler.length ? h('ol', { class: 'ghListe' }, r.prler.map(prSatir)) : null,
+              girisli ? (prAcik ? prForm() : h('div', { class: 'satirDugme' }, h('button', { type: 'button', class: 'dugme kucuk', onclick: () => ((prAcik = true), ciz()) }, ikon('arti', 13), t('github.prAc')))) : null,
+              girisli ? depoBolumu() : null,
+            ]
+      );
+    }
+    yukle();
+    return kap;
+  }
+
   // Sahibin düğmeyle yaptığı git işlemleri: dal, pull, commit, push, GitHub'a bağlama
   function gitBolumu(projeId) {
     const t = depo.t;
@@ -212,7 +320,7 @@ export function projelerSayfasi({ git }) {
             )
           : null,
         r.kayitlar.length ? h('ol', { class: 'gitKayitlar' }, r.kayitlar.slice(0, 5).map((k) => h('li', null, h('code', null, k.kisa), h('span', null, k.konu), h('time', null, k.zaman)))) : null,
-        r.prler && r.prler.length ? h('div', { class: 'gitPrler' }, h('span', { class: 'alanEtiket' }, t('github.pr', { x: r.prler.length })), r.prler.map((p) => h('a', { href: p.adres, target: '_blank', rel: 'noreferrer' }, `#${p.no} ${p.baslik}`))) : null
+        githubYonetimi(projeId, r, async () => (await repoYukle(projeId), ciz_()))
       );
     };
     ciz_();
