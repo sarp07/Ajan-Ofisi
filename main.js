@@ -1384,6 +1384,10 @@ function tarayiciIslemleri(kapsam) {
     cihaz: (id, ad) => (hesap(id), oda.cihazSec(id, ad)),
     tikla: (id, hedef) => (hesap(id), oda.tikla(id, hedef)),
     yaz: (id, girdi) => (hesap(id), oda.yaz(id, girdi)),
+    alanlar: (id) => (hesap(id), oda.alanlar(id)),
+    tus: (id, tus) => (hesap(id), oda.tus(id, tus)),
+    kaydir: (id, s) => (hesap(id), oda.kaydir(id, s)),
+    kapat: (id) => (hesap(id), oda.kapat(id), 'Sekme kapatıldı.'),
     onay: (soru) => sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru),
     telegramYaz: (kime, metin, dosya = '') => telegramYaz(kapsam, kime, metin, dosya),
     whatsappYaz: async (hedef, metin, dosya = '') => {
@@ -2338,7 +2342,11 @@ function pencereAc() {
   });
   pencere.webContents.on('will-navigate', (e) => e.preventDefault());
   pencere.loadURL('ofis://uygulama/arayuz/index.html');
-  pencere.on('closed', () => (gunluk('pencere kapandı'), (pencere = null)));
+  pencere.on('closed', () => {
+    gunluk('pencere kapandı');
+    pencere = null;
+    if (oda) oda.gizliKapat();
+  });
   pencere.on('unresponsive', () => gunluk('pencere yanıt vermiyor'));
   if (oda) oda.pencereAyarla(pencere);
 
@@ -2467,6 +2475,8 @@ if (!app.requestSingleInstanceLock()) {
     if (whatsapp.kayitliMi()) whatsapp.baslat().catch(() => {});
     botlariKur();
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
+    // yalnızca sınama ortamında: otomatik testler ajan araçlarını doğrudan çağırabilsin
+    if (SINAMA) globalThis.__ofisSinama = { mcpAraclari, tumHesaplar };
     setInterval(() => {
       for (const k of katlar.values()) if (k.oturum.acik) durumGonder(k, true);
     }, 1000);

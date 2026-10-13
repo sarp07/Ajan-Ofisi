@@ -4,8 +4,8 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
-export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
+export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus'];
 
 const KURAL =
   'Paylaşım yapan, mesaj gönderen, silen, satın alan ya da hesap ayarını değiştiren bir tıklama veya yazmadan ÖNCE sahip_onayi ile sahibe ne yapacağını sor. Giriş ekranı çıkarsa dur: şifreyi asla isteme ve yazma, sahibe Tarayıcı sayfasından kendisinin giriş yapmasını söyle.';
@@ -49,15 +49,35 @@ export function tarayiciAraclari(ops) {
       sema: nesne({ hesap_id: hesapId, cihaz: { type: 'string', enum: ['masaustu', 'iphone', 'ipad', 'android'] } }, ['hesap_id', 'cihaz']),
       calistir: async (g) => ops.cihaz(String(g.hesap_id), String(g.cihaz)),
     },
+    tarayici_alanlar: {
+      aciklama: 'Sayfadaki tıklanabilir ve yazılabilir öğeleri numarasıyla listeler: alanlar, metin kutuları, açılır listeler, düğmeler, bağlantılar. Açık pencere (ör. LinkedIn düzenleme penceresi), iç çerçeveler ve gölge DOM dahildir; penceredekiler önce gelir. Tıklamadan ve yazmadan önce bunu çağır, sonra öğeye no ile eriş.',
+      sema: nesne({ hesap_id: hesapId }, ['hesap_id']),
+      calistir: async (g) => ops.alanlar(String(g.hesap_id)),
+    },
     tarayici_tikla: {
-      aciklama: 'Sayfada görünen yazısı ya da CSS seçicisi verilen öğeye tıklar. ' + KURAL,
-      sema: nesne({ hesap_id: hesapId, metin: yazi('Öğenin görünen yazısı'), secici: yazi('CSS seçicisi (metin yerine)') }, ['hesap_id']),
-      calistir: async (g) => ops.tikla(String(g.hesap_id), { metin: g.metin ? String(g.metin) : '', secici: g.secici ? String(g.secici) : '' }),
+      aciklama: 'Bir öğeye gerçek fare tıklamasıyla tıklar. En güvenilir yol: tarayici_alanlar listesindeki no. Ya da görünen yazı veya CSS seçici. ' + KURAL,
+      sema: nesne({ hesap_id: hesapId, no: yazi('tarayici_alanlar listesindeki numara, ör. 0.14'), metin: yazi('Öğenin görünen yazısı ya da etiketi'), secici: yazi('CSS seçicisi') }, ['hesap_id']),
+      calistir: async (g) => ops.tikla(String(g.hesap_id), { no: g.no ? String(g.no) : '', metin: g.metin ? String(g.metin) : '', secici: g.secici ? String(g.secici) : '' }),
     },
     tarayici_yaz: {
-      aciklama: 'Bir alana yazı yazar. Seçici verilmezse odaktaki alana yazar. enter true ise ardından Enter tuşuna basar (çoğu sohbette mesajı gönderir). ' + KURAL,
-      sema: nesne({ hesap_id: hesapId, metin: yazi('Yazılacak metin'), secici: yazi('Alanın CSS seçicisi (isteğe bağlı)'), enter: { type: 'boolean' } }, ['hesap_id', 'metin']),
-      calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), secici: g.secici ? String(g.secici) : '', enter: !!g.enter }),
+      aciklama: 'Bir alana gerçek klavye girişi gibi yazar ve alanın son değerini döndürür (yazının alana düştüğünü buradan doğrula). Alan: tarayici_alanlar no, etiket (ör. "Başlık") ya da CSS seçici; hiçbiri verilmezse odaktaki alan. temizle true: önce alanın içini siler. enter true: sonra Enter. Açılır listede (select) metin seçeneğin adıdır. ' + KURAL,
+      sema: nesne({ hesap_id: hesapId, metin: yazi('Yazılacak metin'), no: yazi('tarayici_alanlar numarası'), etiket: yazi('Alanın etiketi ya da yer tutucusu'), secici: yazi('CSS seçicisi'), temizle: { type: 'boolean' }, enter: { type: 'boolean' } }, ['hesap_id', 'metin']),
+      calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), no: g.no ? String(g.no) : '', etiket: g.etiket ? String(g.etiket) : '', secici: g.secici ? String(g.secici) : '', temizle: !!g.temizle, enter: !!g.enter }),
+    },
+    tarayici_tus: {
+      aciklama: 'Klavye tuşuna basar: Enter, Tab, Escape, Backspace, ArrowDown, ArrowUp, PageDown ya da Ctrl+A, Cmd+A gibi birleşimler. ' + KURAL,
+      sema: nesne({ hesap_id: hesapId, tus: yazi('Tuş ya da birleşim') }, ['hesap_id', 'tus']),
+      calistir: async (g) => ops.tus(String(g.hesap_id), String(g.tus)),
+    },
+    tarayici_kaydir: {
+      aciklama: 'Sayfayı ya da açık pencerenin içini kaydırır.',
+      sema: nesne({ hesap_id: hesapId, yon: { type: 'string', enum: ['asagi', 'yukari'] }, miktar: { type: 'number', description: 'Piksel (varsayılan 600)' } }, ['hesap_id']),
+      calistir: async (g) => ops.kaydir(String(g.hesap_id), { yon: g.yon === 'yukari' ? 'yukari' : 'asagi', miktar: g.miktar }),
+    },
+    tarayici_kapat: {
+      aciklama: 'Hesabın tarayıcı sekmesini kapatır (oturumu ve girişi silinmez, tarayici_ac ile yeniden açılır).',
+      sema: nesne({ hesap_id: hesapId }, ['hesap_id']),
+      calistir: async (g) => ops.kapat(String(g.hesap_id)),
     },
     whatsapp_yaz: {
       aciklama: 'Beynin bağlı WhatsApp numarasından mesaj, fotoğraf ya da dosya gönderir (tarayıcı gerekmez). numara verilmezse sahibe gider ve onay sorulmaz. dosya verilirse (jpg, png, pdf, mp4, mp3, docx...) metin açıklama olur. Başka numaraya yazarken, ya da sahip dışında birine dosya gönderirken araç önce sahibin onayını ister.',

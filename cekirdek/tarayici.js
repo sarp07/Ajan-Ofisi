@@ -1,7 +1,7 @@
 // Tarayıcı odası: her bağlı hesap uygulamanın içinde kendi kalıcı Chromium profilinde açılır.
 // Girişi sahip elle yapar, uygulama şifre görmez. Oturum çerezi o hesabın profilinde (persist:hesap-<kimlik>) durur.
 // Ajanlar bu sekmeleri MCP araçlarıyla okur ve kullanır. Bu dosya yalnızca ana süreçte çalışır.
-import { WebContentsView, session } from 'electron';
+import { WebContentsView, BrowserWindow, session } from 'electron';
 
 export const BASLANGIC = {
   telegram: 'https://web.telegram.org/',
@@ -64,6 +64,28 @@ export class TarayiciOdasi {
     this.pencere = p;
   }
 
+  // Ekranda gösterilmeyen sekmeler gizli bir pencerede durur: çizilmeye devam ederler, ajanlar ekran görüntüsü
+  // alabilir, sayfa içi zamanlayıcılar yavaşlamaz.
+  ev() {
+    if (!this.gizliPencere || this.gizliPencere.isDestroyed()) {
+      this.gizliPencere = new BrowserWindow({ show: false, width: 1280, height: 900, skipTaskbar: true, focusable: false, webPreferences: { backgroundThrottling: false } });
+    }
+    return this.gizliPencere;
+  }
+
+  // Ana pencere kapanınca gizli pencere de kapanır (yoksa uygulama kapanmaz)
+  gizliKapat() {
+    if (this.gizliPencere && !this.gizliPencere.isDestroyed()) this.gizliPencere.destroy();
+    this.gizliPencere = null;
+  }
+
+  eveKoy(s) {
+    const ev = this.ev();
+    if (!ev.contentView.children.includes(s.view)) ev.contentView.addChildView(s.view);
+    const c = CIHAZLAR[s.cihaz];
+    s.view.setBounds({ x: 0, y: 0, width: c ? c.genislik : 1280, height: c ? c.yukseklik : 900 });
+  }
+
   bilgi(id) {
     const s = this.sekmeler.get(id);
     if (!s) return { id, acik: false };
@@ -86,7 +108,7 @@ export class TarayiciOdasi {
     ses.setUserAgent(chromeKimligi(ses.getUserAgent()));
     // izinler: kamera, mikrofon, konum gibi istekler reddedilir. Bildirim ve panoya yazma serbest.
     ses.setPermissionRequestHandler((_wc, izin, karar) => karar(['notifications', 'clipboard-sanitized-write', 'fullscreen'].includes(izin)));
-    const view = new WebContentsView({ webPreferences: { partition: bolme, sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    const view = new WebContentsView({ webPreferences: { partition: bolme, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     view.setBackgroundColor('#ffffff');
     const wc = view.webContents;
     // yeni pencere açmak isteyen bağlantılar aynı sekmede açılır
@@ -126,6 +148,7 @@ export class TarayiciOdasi {
     });
     wc.on('render-process-gone', (_e, d) => konsolaEkle({ seviye: 'error', mesaj: 'Sayfa çöktü: ' + (d && d.reason), kaynak: wc.getURL(), satir: 0 }));
     this.sekmeler.set(hesap.id, s);
+    this.eveKoy(s);
     wc.loadURL(hesapAdresi(hesap));
     return s;
   }
@@ -136,6 +159,7 @@ export class TarayiciOdasi {
     if (!s || !this.pencere || this.pencere.isDestroyed()) return;
     if (this.gorunen && this.gorunen !== id) this.gizle();
     const cv = this.pencere.contentView;
+    if (this.gizliPencere && !this.gizliPencere.isDestroyed() && this.gizliPencere.contentView.children.includes(s.view)) this.gizliPencere.contentView.removeChildView(s.view);
     if (!cv.children.includes(s.view)) cv.addChildView(s.view);
     s.alan = alan;
     s.view.setBounds(this.sinir(s, alan));
@@ -172,6 +196,7 @@ export class TarayiciOdasi {
       wc.setUserAgent(s.kimlik);
     }
     if (this.gorunen === id && s.alan) s.view.setBounds(this.sinir(s, s.alan));
+    else this.eveKoy(s);
     wc.reload();
     this.degisti(id, this.bilgi(id));
     return this.bilgi(id);
@@ -195,6 +220,7 @@ export class TarayiciOdasi {
     if (!this.gorunen || !this.pencere || this.pencere.isDestroyed()) return (this.gorunen = null);
     const s = this.sekmeler.get(this.gorunen);
     if (s && this.pencere.contentView.children.includes(s.view)) this.pencere.contentView.removeChildView(s.view);
+    if (s) this.eveKoy(s);
     this.gorunen = null;
   }
 
@@ -202,6 +228,7 @@ export class TarayiciOdasi {
     const s = this.sekmeler.get(id);
     if (!s) return;
     if (this.gorunen === id) this.gizle();
+    if (this.gizliPencere && !this.gizliPencere.isDestroyed() && this.gizliPencere.contentView.children.includes(s.view)) this.gizliPencere.contentView.removeChildView(s.view);
     s.view.webContents.close();
     this.sekmeler.delete(id);
     this.degisti(id, { id, acik: false });
@@ -239,56 +266,240 @@ export class TarayiciOdasi {
     return { adres: wc.getURL(), baslik: wc.getTitle(), metin: String(yazi || '') };
   }
 
+  // Ekran görüntüsü: sekme ekranda görünmüyorsa da çekilir (stayHidden). Boş gelirse sayfa yeniden çizdirilip denenir.
   async goruntu(id) {
     const wc = this.sekme(id);
-    const img = await wc.capturePage();
+    let img = null;
+    for (let deneme = 0; deneme < 3; deneme++) {
+      try {
+        img = await wc.capturePage(undefined, { stayHidden: true });
+      } catch {
+        img = null;
+      }
+      if (img && !img.isEmpty() && img.getSize().width > 1) break;
+      wc.invalidate();
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    if (!img || img.isEmpty()) throw new Error('Ekran görüntüsü alınamadı: sayfa henüz çizilmedi. Biraz bekleyip yeniden dene ya da tarayici_metin ile oku.');
     const kucuk = img.getSize().width > 1400 ? img.resize({ width: 1400 }) : img;
     return kucuk.toPNG().toString('base64');
   }
 
-  // Görünen yazısı ya da CSS seçicisi verilen öğeye tıklar
-  async tikla(id, { metin, secici }) {
+  // Sayfanın bütün çerçeveleri (ana sayfa ve iç çerçeveler). Sıra numarası öğe numarasının önekidir.
+  cerceveler(id) {
     const wc = this.sekme(id);
-    const sonuc = await wc.executeJavaScript(
-      `(() => {
-        const secici = ${JSON.stringify(secici || '')};
-        const aranan = ${JSON.stringify(String(metin || '').trim().toLowerCase())};
-        let el = null;
-        if (secici) el = document.querySelector(secici);
-        if (!el && aranan) {
-          const adaylar = [...document.querySelectorAll('button, a, [role=button], [role=link], [role=tab], [role=menuitem], input[type=submit], label, span, div')];
-          el = adaylar.find((x) => (x.innerText || x.value || x.getAttribute('aria-label') || '').trim().toLowerCase() === aranan)
-            || adaylar.find((x) => (x.innerText || x.getAttribute('aria-label') || '').trim().toLowerCase().includes(aranan));
-        }
-        if (!el) return { bulundu: false };
-        el.scrollIntoView({ block: 'center' });
-        el.click();
-        return { bulundu: true, etiket: (el.innerText || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 80) };
-      })()`,
-      true
-    );
-    if (!sonuc || !sonuc.bulundu) throw new Error('Tıklanacak öğe bulunamadı');
-    return sonuc;
+    try {
+      return wc.mainFrame.framesInSubtree.filter((f) => !f.detached);
+    } catch {
+      return [wc.mainFrame];
+    }
   }
 
-  // Seçilen alana yazar. Alan verilmezse odaktaki alana yazılır. enter: yazdıktan sonra Enter'a basar.
-  async yaz(id, { secici, metin, enter }) {
+  // Etkileşilebilir öğeleri numaralandırır: alanlar, düğmeler, bağlantılar. Gölge DOM ve iç çerçeveler dahil.
+  // Açık bir pencere (dialog) varsa onun içindekiler önce gelir. Ajan sonra öğeye numarasıyla tıklar ya da yazar.
+  async alanlar(id) {
+    const sonuc = [];
+    const cerceveler = this.cerceveler(id);
+    for (let fi = 0; fi < cerceveler.length; fi++) {
+      try {
+        const liste = await cerceveler[fi].executeJavaScript(TARA(fi));
+        if (Array.isArray(liste)) sonuc.push(...liste);
+      } catch {
+        /* erişilemeyen çerçeve */
+      }
+    }
+    sonuc.sort((a, b) => (b.pencerede ? 1 : 0) - (a.pencerede ? 1 : 0));
+    return { adres: this.sekme(id).getURL(), ipucu: 'Öğeye tarayici_tikla ya da tarayici_yaz ile no vererek eriş. Sayfa değişince yeniden listele.', ogeler: sonuc.slice(0, 220) };
+  }
+
+  // Numara, CSS seçici ya da görünen yazı/etiketle öğeyi bulur ve hazırlar. Döner: { cerceve, fi, bilgi }
+  async bul(id, { no, secici, metin, etiket }, eylem) {
+    const cerceveler = this.cerceveler(id);
+    const ara = { no: no ? String(no) : '', secici: secici || '', metin: String(metin || etiket || '').trim().toLowerCase() };
+    const sira = ara.no ? [Number(String(ara.no).split('.')[0])] : cerceveler.map((_, i) => i);
+    for (const fi of sira) {
+      const f = cerceveler[fi];
+      if (!f) continue;
+      try {
+        const bilgi = await f.executeJavaScript(BUL(fi, ara, eylem));
+        if (bilgi && bilgi.bulundu) return { cerceve: f, fi, bilgi };
+      } catch {
+        /* erişilemeyen çerçeve */
+      }
+    }
+    return null;
+  }
+
+  // Tıklar: önce gerçek fare tıklaması (ana çerçevede, cihaz modu kapalıyken), olmazsa sayfa içi tıklama
+  async tikla(id, hedef) {
+    const s = this.sekmeler.get(id);
     const wc = this.sekme(id);
-    if (secici) {
-      const ok = await wc.executeJavaScript(`(() => { const el = document.querySelector(${JSON.stringify(secici)}); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.focus(); return true; })()`, true);
-      if (!ok) throw new Error('Yazılacak alan bulunamadı');
+    const b = await this.bul(id, hedef, 'tikla');
+    if (!b) throw new Error('Tıklanacak öğe bulunamadı. tarayici_alanlar ile öğeleri listeleyip numarasıyla dene.');
+    const gercek = b.fi === 0 && (!s || s.cihaz === 'masaustu') && b.bilgi.x >= 0 && b.bilgi.y >= 0;
+    if (gercek) {
+      const x = Math.round(b.bilgi.x);
+      const y = Math.round(b.bilgi.y);
+      wc.sendInputEvent({ type: 'mouseMove', x, y });
+      wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+      wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+    } else await b.cerceve.executeJavaScript(`(() => { const el = ${DERIN_BUL}(${JSON.stringify(b.bilgi.no)}); if (el) { el.focus && el.focus(); el.click(); } })()`);
+    await new Promise((r) => setTimeout(r, 250));
+    return { tamam: true, oge: b.bilgi.etiket, no: b.bilgi.no };
+  }
+
+  // Yazar: öğeye odaklanır, istenirse içini temizler, metni gerçek klavye girişi gibi ekler, sonra alanın değerini okur.
+  // Metin alana düşmediyse React ve zengin metin kutularıyla uyumlu yedek yöntem kullanılır.
+  async yaz(id, { no, secici, etiket, metin, temizle, enter }) {
+    const wc = this.sekme(id);
+    const yazi = String(metin || '');
+    let b = null;
+    if (no || secici || etiket) {
+      b = await this.bul(id, { no, secici, etiket }, temizle ? 'odaklaTemizle' : 'odakla');
+      if (!b) throw new Error('Yazılacak alan bulunamadı. tarayici_alanlar ile alanları listeleyip numarasıyla dene.');
     }
-    // insertText hem düz alanlarda hem zengin metin kutularında (WhatsApp, LinkedIn) çalışır
-    await wc.insertText(String(metin || ''));
-    if (enter) {
-      wc.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
-      wc.sendInputEvent({ type: 'char', keyCode: '\r' });
-      wc.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+    await wc.insertText(yazi);
+    await new Promise((r) => setTimeout(r, 120));
+    let deger = '';
+    if (b) {
+      deger = await b.cerceve.executeJavaScript(YEDEK(b.bilgi.no, yazi));
     }
+    if (enter) this.tus(id, 'Enter');
+    return { tamam: true, alan: b ? b.bilgi.etiket : 'odaktaki alan', deger: String(deger || '').slice(0, 300) };
+  }
+
+  // Klavye tuşu: Enter, Tab, Escape, Backspace, ok tuşları, PageDown; "Ctrl+A" ya da "Cmd+A" gibi birleşimler
+  tus(id, tus) {
+    const wc = this.sekme(id);
+    const parca = String(tus).split('+');
+    const ana = parca.pop();
+    const mod = parca.map((m) => ({ cmd: 'meta', ctrl: 'control', alt: 'alt', shift: 'shift' })[m.toLowerCase()] || m.toLowerCase());
+    const kod = { Enter: 'Enter', Tab: 'Tab', Escape: 'Escape', Esc: 'Escape', Backspace: 'Backspace', Delete: 'Delete', ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right', PageDown: 'PageDown', PageUp: 'PageUp', Space: 'Space' }[ana] || ana;
+    wc.sendInputEvent({ type: 'keyDown', keyCode: kod, modifiers: mod });
+    if (ana === 'Enter' && !mod.length) wc.sendInputEvent({ type: 'char', keyCode: '\r' });
+    wc.sendInputEvent({ type: 'keyUp', keyCode: kod, modifiers: mod });
+    return { tamam: true };
+  }
+
+  // Kaydırır: açık pencere varsa onun içi, yoksa sayfa
+  async kaydir(id, { yon = 'asagi', miktar = 600 } = {}) {
+    const wc = this.sekme(id);
+    const d = (yon === 'yukari' ? -1 : 1) * Math.max(50, Math.min(4000, Number(miktar) || 600));
+    await wc.executeJavaScript(`(() => {
+      const pencere = [...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter((x) => x.getClientRects().length).pop();
+      const kap = pencere ? [pencere, ...pencere.querySelectorAll('*')].find((x) => x.scrollHeight > x.clientHeight + 20 && /auto|scroll/.test(getComputedStyle(x).overflowY)) : null;
+      (kap || window).scrollBy({ top: ${d}, behavior: 'instant' });
+    })()`);
     return { tamam: true };
   }
 
   hepsiniKapat() {
     for (const id of [...this.sekmeler.keys()]) this.kapat(id);
+    if (this.gizliPencere && !this.gizliPencere.isDestroyed()) this.gizliPencere.destroy();
   }
+}
+
+// ---------- sayfa içi betikler ----------
+// Gölge DOM dahil derin arama
+const DERIN = `((kok) => {
+  const sonuc = [];
+  const yuru = (d) => {
+    for (const el of d.querySelectorAll('*')) {
+      sonuc.push(el);
+      if (el.shadowRoot) yuru(el.shadowRoot);
+    }
+  };
+  yuru(kok);
+  return sonuc;
+})`;
+const DERIN_BUL = `((no) => ${DERIN}(document).find((x) => x.getAttribute && x.getAttribute('data-ofis-no') === no))`;
+
+const SECICI = 'input:not([type=hidden]), textarea, select, [contenteditable]:not([contenteditable=false]), button, a[href], [role=button], [role=textbox], [role=combobox], [role=checkbox], [role=radio], [role=tab], [role=menuitem], [role=option], [role=switch], [role=link]';
+
+const ETIKET = `((el) => {
+  const t = (x) => String(x || '').replace(/\\s+/g, ' ').trim();
+  const al = el.getAttribute('aria-label');
+  if (al) return t(al);
+  const lb = el.getAttribute('aria-labelledby');
+  if (lb) { const m = lb.split(' ').map((i) => (document.getElementById(i) || {}).innerText).filter(Boolean).join(' '); if (m) return t(m); }
+  if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l && l.innerText) return t(l.innerText); }
+  const ust = el.closest && el.closest('label');
+  if (ust && ust.innerText) return t(ust.innerText);
+  return t(el.placeholder || el.getAttribute('title') || el.name || (el.tagName === 'INPUT' ? el.value : el.innerText) || el.getAttribute('alt') || '');
+})`;
+
+function TARA(fi) {
+  return `(() => {
+    const hepsi = ${DERIN}(document).filter((el) => el.matches && el.matches(${JSON.stringify(SECICI)}));
+    const gorunur = (el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none'; };
+    const pencere = [...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter(gorunur).pop() || null;
+    const sonuc = [];
+    let i = 0;
+    for (const el of hepsi) {
+      if (!gorunur(el)) continue;
+      const no = '${fi}.' + (++i);
+      el.setAttribute('data-ofis-no', no);
+      const tag = el.tagName.toLowerCase();
+      const tur = el.getAttribute('role') || (tag === 'input' ? 'input:' + (el.type || 'text') : el.isContentEditable ? 'metin-kutusu' : tag);
+      const deger = tag === 'input' || tag === 'textarea' || tag === 'select' ? el.value : el.isContentEditable ? el.innerText : '';
+      sonuc.push({ no, tur, etiket: ${ETIKET}(el).slice(0, 90), deger: String(deger || '').slice(0, 90), pasif: !!el.disabled, pencerede: !!(pencere && pencere.contains(el)) });
+      if (sonuc.length > 400) break;
+    }
+    return sonuc;
+  })()`;
+}
+
+// Öğeyi bulur; eylem: tikla (konumunu döndürür), odakla, odaklaTemizle
+function BUL(fi, ara, eylem) {
+  return `(() => {
+    const ara = ${JSON.stringify(ara)};
+    const hepsi = ${DERIN}(document);
+    let el = null;
+    if (ara.no) el = hepsi.find((x) => x.getAttribute && x.getAttribute('data-ofis-no') === ara.no);
+    if (!el && ara.secici) { try { el = hepsi.find((x) => x.matches && x.matches(ara.secici)); } catch {} }
+    if (!el && ara.metin) {
+      const adaylar = hepsi.filter((x) => x.matches && x.matches(${JSON.stringify(SECICI)}) && x.getClientRects().length);
+      el = adaylar.find((x) => ${ETIKET}(x).toLowerCase() === ara.metin) || adaylar.find((x) => ${ETIKET}(x).toLowerCase().includes(ara.metin));
+    }
+    if (!el) return { bulundu: false };
+    if (!el.getAttribute('data-ofis-no')) el.setAttribute('data-ofis-no', '${fi}.x' + Math.random().toString(36).slice(2, 7));
+    el.scrollIntoView({ block: 'center', inline: 'center' });
+    const eylem = ${JSON.stringify(eylem)};
+    if (eylem !== 'tikla') {
+      el.focus();
+      if (eylem === 'odaklaTemizle') {
+        if ('select' in el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) el.select();
+        else if (el.isContentEditable) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      } else if (el.isContentEditable) {
+        const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      }
+    }
+    const r = el.getBoundingClientRect();
+    return { bulundu: true, no: el.getAttribute('data-ofis-no'), etiket: ${ETIKET}(el).slice(0, 90), x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`;
+}
+
+// Yazı alana düştü mü: düşmediyse React uyumlu yedek (yerel value ayarlayıcı + input olayı) ya da execCommand
+function YEDEK(no, metin) {
+  return `(() => {
+    const el = ${DERIN_BUL}(${JSON.stringify(no)});
+    if (!el) return '';
+    const metin = ${JSON.stringify(metin)};
+    const oku = () => (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' ? el.value : el.innerText) || '';
+    if (metin && !oku().includes(metin.slice(0, 40))) {
+      el.focus();
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        const proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, oku() + metin);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (el.tagName === 'SELECT') {
+        const o = [...el.options].find((x) => x.text.trim().toLowerCase() === metin.trim().toLowerCase() || x.value === metin);
+        if (o) { el.value = o.value; el.dispatchEvent(new Event('change', { bubbles: true })); }
+      } else if (el.isContentEditable) {
+        document.execCommand('insertText', false, metin);
+      }
+    }
+    return oku();
+  })()`;
 }

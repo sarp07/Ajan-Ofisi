@@ -63,7 +63,9 @@ export function varsayilanSirket(dil = 'tr') {
     projeKoku: '',
     otomatikGuncelleme: true,
     // tarayıcıda tıklama ve yazma her seferinde onay sorsun mu
-    tarayiciOnaysiz: false,
+    // ajanlar tarayıcıyı tam yetkiyle kullanır; dışarıya giden işler (paylaşım, mesaj) yine sahip_onayi ile sorulur
+    tarayiciOnaysiz: true,
+    tarayiciGecisi: 1,
     bildirim: true,
     bildirimSesi: true,
   };
@@ -335,7 +337,8 @@ export function normalle(ham) {
     claudeYolu: metin(s.claudeYolu, 1000),
     codexYolu: metin(s.codexYolu, 1000),
     otomatikGuncelleme: s.otomatikGuncelleme !== false,
-    tarayiciOnaysiz: !!s.tarayiciOnaysiz,
+    tarayiciOnaysiz: s.tarayiciGecisi !== 1 ? true : !!s.tarayiciOnaysiz,
+    tarayiciGecisi: 1,
     projeKoku: path.isAbsolute(metin(s.projeKoku, 1000)) ? metin(s.projeKoku, 1000) : '',
     bildirim: s.bildirim !== false,
     bildirimSesi: s.bildirimSesi !== false,
