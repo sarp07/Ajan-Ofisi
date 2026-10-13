@@ -1,15 +1,16 @@
-// Bina: aktif kat cam bir kuleden çekmece gibi öne çekilmiş durur; kulede onun yeri boş kalır.
-// Kulenin üst katları yukarıda, alt katları aşağıda görünür. Oturumu açık katın pencereleri sıcak sarı yanar,
-// kapalı katların camı gece mavisidir. Arkada gece şehri vardır. Bir kata ya da etiketine tıklanınca o kata geçilir.
+// Bina: her zaman yüksek bir cam kule (en az 12 kat). Projelerin katları kulenin alt katlarıdır.
+// Aktif kat yerinde durur ve alt katlara bitişiktir; yalnızca üstündeki katlar yukarı doğru ayrılır, aradaki boşlukta
+// aktif katın içi görünür. Oturumu açık katın pencereleri sıcak sarı yanar, kapalı katlar karanlıktır. Arkada gece şehri.
+// Bir kata ya da etiketine tıklanınca o kata geçilir.
 import { iso, box, faceX, faceY, faceTop } from './izo.js';
 import { W, D, WALL_H } from './ofis.js';
 
 const KAT_Y = 2.1; // kulede bir katın yüksekliği
 const DOSEME = 0.24; // katlar arasındaki beton bant
-const GERI = 12; // kule, öne çekilmiş aktif katın ne kadar gerisinde (x ve y yönünde)
-const TABAN_Z = -0.45; // aktif katın döşemesinin altı: kulede aktif katın yeri bu seviyeden başlar
-const GOSTER_UST = 6;
-const GOSTER_ALT = 4;
+const TABAN_Z = -0.45; // aktif katın döşemesinin altı
+const EN_AZ = 12; // kule en az bu kadar katlı görünür
+const ZEMIN_Y = 2.6; // giriş katı (lobi) yüksekliği
+const ACILMA = 19; // üst katlar aktif katın duvar üstünden bu kadar yukarı kalkar
 
 const yumusak = (x) => 1 - Math.pow(1 - x, 3);
 
@@ -21,11 +22,11 @@ function rastgele(tohum) {
   };
 }
 
-// Kulenin yeri: aktif katın gerisinde, aynı taban ölçüsünde
-const KX = -GERI;
-const KY = -GERI;
-const KW = W;
-const KD = D;
+// Kulenin yeri: aktif katla aynı taban (döşeme kenarları dahil)
+const KX = -0.25;
+const KY = -0.25;
+const KW = W + 0.25;
+const KD = D + 0.25;
 
 // Bir cephe şeridi: cam pencereler ve dikmeler. genislik: plan birimi * 100, yukseklik: cam yüksekliği * 100
 function cephe(c, genislik, yukseklik, yanik, tohum, karanlik) {
@@ -71,30 +72,31 @@ function cephe(c, genislik, yukseklik, yanik, tohum, karanlik) {
   for (let x = 0; x <= genislik; x += bolme) c.fillRect(x - 2, 0, 4, yukseklik);
 }
 
-// Kulenin bir katı: altında beton döşeme bandı, üstünde iki cepheli cam şerit
-function kat(ctx, z, k, i) {
+// Kulenin bir katı: altında beton döşeme bandı, üstünde iki cepheli cam şerit.
+// Proje katı açıksa ışıkları yanar, kapalıysa karanlıktır; projesi olmayan katlarda birkaç rastgele ışık yanar.
+function kat(ctx, z, k) {
   const cam = KAT_Y - DOSEME;
-  // döşeme bandı
+  const karanlik = !k.dolgu && !k.acik;
   box(ctx, KX, KY, z, KW, KD, DOSEME, '#3A4357', { top: '#3A4357', left: '#566078', right: '#454E64' });
-  // cam gövde (kutu olarak çizilir, cepheler üstüne boyanır)
   box(ctx, KX, KY, z + DOSEME, KW, KD, cam, '#1B2740', { top: '#2A3348' });
-  faceY(ctx, KX, KY + KD, z + KAT_Y, (c) => cephe(c, KW * 100, cam * 100, k.acik, k.no * 31 + 7, false));
-  faceX(ctx, KX + KW, KY + KD, z + KAT_Y, (c) => cephe(c, KD * 100, cam * 100, k.acik, k.no * 17 + 3, false));
+  faceY(ctx, KX, KY + KD, z + KAT_Y, (c) => cephe(c, KW * 100, cam * 100, !!k.acik, k.no * 31 + 7, karanlik));
+  faceX(ctx, KX + KW, KY + KD, z + KAT_Y, (c) => cephe(c, KD * 100, cam * 100, !!k.acik, k.no * 17 + 3, karanlik));
 }
 
-// Aktif katın kuledeki boş yeri: karanlık bir oyuk, çevresinde ince ışık
-function oyuk(ctx, z, yukseklik) {
-  box(ctx, KX, KY, z, KW, KD, DOSEME, '#3A4357', { top: '#3A4357', left: '#566078', right: '#454E64' });
-  box(ctx, KX, KY, z + DOSEME, KW, KD, yukseklik - DOSEME, '#0A0E17', { top: '#0A0E17', left: '#0D1220', right: '#0A0F1A' });
-  faceY(ctx, KX, KY + KD, z + yukseklik, (c) => {
-    c.strokeStyle = 'rgba(23,184,166,0.45)';
-    c.lineWidth = 6;
-    c.strokeRect(3, 3, KW * 100 - 6, (yukseklik - DOSEME) * 100 - 6);
-  });
-  faceX(ctx, KX + KW, KY + KD, z + yukseklik, (c) => {
-    c.strokeStyle = 'rgba(23,184,166,0.45)';
-    c.lineWidth = 6;
-    c.strokeRect(3, 3, KD * 100 - 6, (yukseklik - DOSEME) * 100 - 6);
+// Giriş katı: koyu taş kaplama, aydınlık cam giriş ve tabela
+function lobi(ctx, z) {
+  box(ctx, KX - 0.3, KY - 0.3, z - 0.3, KW + 0.6, KD + 0.6, 0.3, '#2A3142', { top: '#343C50' });
+  box(ctx, KX, KY, z, KW, KD, ZEMIN_Y, '#252C3C', { top: '#2A3348', left: '#2E3647', right: '#262D3C' });
+  faceY(ctx, KX, KY + KD, z + ZEMIN_Y, (c) => {
+    const g = c.createLinearGradient(0, 0, 0, ZEMIN_Y * 100);
+    g.addColorStop(0, '#FFE7B5');
+    g.addColorStop(1, '#E9A85A');
+    c.fillStyle = g;
+    c.fillRect(KW * 100 * 0.35, 70, KW * 100 * 0.3, ZEMIN_Y * 100 - 70);
+    c.fillStyle = 'rgba(60,40,20,0.6)';
+    for (let x = KW * 100 * 0.35; x <= KW * 100 * 0.65; x += 60) c.fillRect(x - 2, 70, 4, ZEMIN_Y * 100 - 70);
+    c.fillStyle = '#17B8A6';
+    c.fillRect(KW * 100 * 0.42, 22, KW * 100 * 0.16, 26);
   });
 }
 
@@ -222,10 +224,16 @@ export class Bina {
     return this.katlar.findIndex((k) => k.id === this.aktif);
   }
 
-  // Sahnenin sığdırma sınırına eklenecek pay (dünya pikseli): kulenin bir kısmı görünsün
+  // Sahnenin sığdırma sınırına eklenecek pay (dünya pikseli): ayrılan üst katların ve alttaki kulenin bir kısmı görünsün
   pay() {
-    if (!this.katlar.length) return { ust: 0, alt: 0, sol: 0 };
-    return { ust: 400, alt: 40, sol: 40 };
+    if (!this.katlar.length) return { ust: 0, alt: 0 };
+    return { ust: 260, alt: 170 };
+  }
+
+  // Kulenin bütün katları alttan üste: projelerin katları, sonra kuleyi en az EN_AZ kata tamamlayan katlar
+  kule() {
+    const n = Math.max(EN_AZ, this.katlar.length + 3);
+    return Array.from({ length: n }, (_, j) => this.katlar[j] || { id: null, no: j + 1, dolgu: true });
   }
 
   arkaPlan(ctx, gen, yuk) {
@@ -286,56 +294,56 @@ export class Bina {
     ctx.drawImage(this.gece, 0, 0, gen, yuk);
   }
 
-  // Kule: aktif katın gerisinde, ofisten önce çizilir. Alttan üste: alt katlar, boş yer, üst katlar, çatı.
-  // Kat değişince kule kısa bir an aşağıdan yukarı kayar (aktif kat çekmece gibi öne çıkar).
+  // Alt katlar ve lobi: aktif katın hemen altında, ona bitişik (ofisten önce çizilir)
   altCiz(ctx) {
     const i = this.sira;
     this.yollar = [];
     if (i < 0) return;
-    const f = yumusak(Math.min(1, (performance.now() - this.acilis) / 700));
-    const kay = (1 - f) * KAT_Y * 0.6;
-    const yuvaH = WALL_H + 0.45;
-    const alt = this.katlar.slice(Math.max(0, i - GOSTER_ALT), i);
-    const ust = this.katlar.slice(i + 1, i + 1 + GOSTER_UST);
-    // alt katlar: en alttan başlayarak
-    alt.forEach((k, j) => {
-      const z = TABAN_Z - (alt.length - j) * KAT_Y - kay;
-      kat(ctx, z, k, j);
-      this.yollar.push({ id: k.id, z, h: KAT_Y });
-    });
-    oyuk(ctx, TABAN_Z - kay, yuvaH);
-    ust.forEach((k, j) => {
-      const z = TABAN_Z + yuvaH + j * KAT_Y - kay;
-      kat(ctx, z, k, j);
-      this.yollar.push({ id: k.id, z, h: KAT_Y });
-    });
-    // kule bitiyorsa çatı
-    if (i + 1 + GOSTER_UST >= this.katlar.length) cati(ctx, TABAN_Z + yuvaH + ust.length * KAT_Y - kay);
-    this.aktifZ = TABAN_Z - kay;
-    this.yuvaH = yuvaH;
+    const kule = this.kule();
+    let z = TABAN_Z;
+    for (let j = i - 1; j >= 0; j--) {
+      z -= KAT_Y;
+      this.yollar.push({ k: kule[j], z, h: KAT_Y });
+    }
+    lobi(ctx, z - ZEMIN_Y);
+    for (const y of [...this.yollar].reverse()) kat(ctx, y.z, y.k);
   }
 
-  ustCiz() {}
+  // Üst katlar: aktif katın üstünden yukarı ayrılır; kat değişince aralanma animasyonu (ofisten sonra çizilir)
+  ustCiz(ctx) {
+    const i = this.sira;
+    if (i < 0) return;
+    const f = yumusak(Math.min(1, (performance.now() - this.acilis) / 750));
+    const kule = this.kule();
+    let z = WALL_H + (ACILMA - WALL_H) * f;
+    for (let j = i + 1; j < kule.length; j++) {
+      kat(ctx, z, kule[j]);
+      this.yollar.push({ k: kule[j], z, h: KAT_Y });
+      z += KAT_Y;
+    }
+    cati(ctx, z);
+  }
 
-  // Etiketler ofisten sonra: aktif katın etiketi kuledeki yerinde, diğerleri kendi katlarında
+  // Etiketler en üst katmanda: yalnızca proje katlarının; aktif katın etiketi vurgulu
   etiketCiz(ctx) {
     const i = this.sira;
     if (i < 0) return;
-    for (const y of this.yollar) {
-      const k = this.katlar.find((x) => x.id === y.id);
-      if (k) etiket(ctx, y.z, k, false);
-    }
-    etiket(ctx, this.aktifZ + 0.2, this.katlar[i], true);
+    for (const y of this.yollar) if (!y.k.dolgu) etiket(ctx, y.z, y.k, false);
+    etiket(ctx, TABAN_Z + 0.25, this.katlar[i], true);
   }
 
   vur(ctx, wx, wy) {
     for (const y of [...this.yollar].reverse()) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (y.k.dolgu) {
+        ctx.restore();
+        continue;
+      }
       katYolu(ctx, y.z, y.h);
       const ic = ctx.isPointInPath(wx, wy);
       ctx.restore();
-      if (ic) return y.id;
+      if (ic) return y.k.id;
     }
     return null;
   }
