@@ -284,7 +284,7 @@ function masaustuBildir(tur, baslik, govde) {
   const z = Date.now();
   if (z - (sonBildirim.get(tur) || 0) < 4000) return;
   sonBildirim.set(tur, z);
-  const b = new Notification({ title: baslik, body: String(govde || '').replace(/\s+/g, ' ').slice(0, 220), silent: false });
+  const b = new Notification({ title: baslik, body: String(govde || '').replace(/\s+/g, ' ').slice(0, 220), silent: depo.veri.bildirimSesi === false });
   b.on('click', () => {
     if (!pencere) return;
     if (pencere.isMinimized()) pencere.restore();
@@ -1459,7 +1459,7 @@ function ipcKur() {
   });
 
   h('sirket:guncelle', (yama) => {
-    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme', 'tarayiciOnaysiz'];
+    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'bildirimSesi', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme', 'tarayiciOnaysiz'];
     const temiz = {};
     for (const k of izinli) if (yama && k in yama) temiz[k] = yama[k];
     // Telegram sahip bağlantısı yalnızca bot üzerinden kurulur, arayüzden değiştirilemez

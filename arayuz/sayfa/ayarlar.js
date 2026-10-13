@@ -479,7 +479,8 @@ export function ayarlarSayfasi({ git } = {}) {
             ),
             h('span', { class: 'alanIpucu' }, t('ayar.projeKokuIpucu'))
           ),
-          h('div', { class: 'alan yatay' }, anahtar(s.bildirim, (v) => api.sirketGuncelle({ bildirim: v }), t('ayar.bildirim')), h('span', { class: 'alanIpucu' }, t('ayar.bildirimIpucu')))
+          h('div', { class: 'alan yatay' }, anahtar(s.bildirim, (v) => api.sirketGuncelle({ bildirim: v }), t('ayar.bildirim')), h('span', { class: 'alanIpucu' }, t('ayar.bildirimIpucu'))),
+          s.bildirim ? h('div', { class: 'alan yatay' }, anahtar(s.bildirimSesi !== false, (v) => api.sirketGuncelle({ bildirimSesi: v }), t('ayar.bildirimSesi')), h('span', { class: 'alanIpucu' }, t('ayar.bildirimSesiIpucu'))) : null
         ),
         h(
           'section',

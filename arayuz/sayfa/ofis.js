@@ -40,7 +40,9 @@ export function ofisSayfasi({ git }) {
   );
   // beyin seçiliyken sahnenin yerinde bina özeti görünür
   const binaPanel = h('div', { class: 'bina', hidden: true });
-  const sahneKap = h('section', { class: 'sahne' }, tuval, yakinlik, bosKart, binaPanel);
+  // asansör: binada katlar arası geçiş (▲ ▼ ve kat listesi)
+  const asansor = h('nav', { class: 'asansor', hidden: true });
+  const sahneKap = h('section', { class: 'sahne' }, tuval, yakinlik, bosKart, asansor, binaPanel);
   const beyinMi = () => depo.gorunum === 'beyin';
   // özel sohbet: "ozel:<kat>:<ajan>"
   const ozelBilgi = () => {
@@ -207,6 +209,7 @@ export function ofisSayfasi({ git }) {
       ekipCiz();
     },
     bosMasa: (i) => git('ekip', { yeni: true, masa: i }),
+    katSec: (id) => kataGit(id),
   });
 
   // ---------- terminal ----------
@@ -541,10 +544,14 @@ export function ofisSayfasi({ git }) {
   }
 
   // ---------- kat şeridi ----------
+  // Ofis katları (kişisel kat hariç), alttan üste. Kat numarası binadaki sırasıdır.
+  const ofisKatlari = () => depo.sirket.projeler.filter((p) => p.tur !== 'kisisel');
   function katSeritCiz() {
     const tt = depo.t;
     const secili = seciliKat();
-    const katlar = depo.sirket.projeler;
+    const katlar = ofisKatlari();
+    const kisisel = kisiselMi() || ozelMi();
+    const aktif = katlar.find((p) => p.id === secili);
     doldur(
       katSerit,
       h(
@@ -563,49 +570,52 @@ export function ofisSayfasi({ git }) {
         (depo.oturumlar.beyin || {}).bekleyen ? h('span', { class: 'katBekleyen' }, String(depo.oturumlar.beyin.bekleyen)) : null
       ),
       h('span', { class: 'katAyrac', 'aria-hidden': 'true' }),
-      h('span', { class: 'katEtiket' }, tt('kat.bina')),
-      h(
-        'div',
-        { class: 'katListe', role: 'tablist' },
-        katlar.map((p, i) => {
-          const o = depo.oturumlar[p.id] || {};
-          const bekleyen = o.bekleyen || 0;
-          return h(
-            'button',
-            {
-              type: 'button',
-              role: 'tab',
-              'aria-selected': p.id === secili ? 'true' : 'false',
-              class: 'katDugme' + (p.id === secili ? ' secili' : '') + (o.acik ? ' acik' : ''),
-              title: p.klasor + (o.acik ? ' · ' + tt('kat.calisiyor') : ''),
-              onclick: () => kataGit(p.id),
-            },
-            p.tur === 'kisisel' ? h('span', { class: 'katNo kisisel' }, ikon('kalp', 12)) : h('span', { class: 'katNo' }, String(i + 1)),
-            h('span', { class: 'katAd' }, p.ad),
-            o.acik ? h('span', { class: 'katNokta', 'aria-label': tt('kat.calisiyor') }) : null,
-            bekleyen ? h('span', { class: 'katBekleyen', title: tt('kat.bekleyen', { x: bekleyen }) }, String(bekleyen)) : null
-          );
-        })
-      ),
-      // açık özel sohbetler ve şu an bakılan özel sohbet
-      ozelCipleri(),
-      h('button', { type: 'button', class: 'katEkle', onclick: () => katKurAc() }, ikon('arti', 14), tt('kat.kur')),
-      !katlar.some((p) => p.tur === 'kisisel')
-        ? h(
-            'button',
-            {
-              type: 'button',
-              class: 'katEkle',
-              onclick: async () => {
-                const r = await api.katKisisel();
-                if (r && r.proje) kataGit(r.proje.id);
-              },
-            },
-            ikon('kalp', 14),
-            tt('kisisel.kur')
-          )
-        : null,
+      kisisel
+        ? h('span', { class: 'katBaslik' }, h('span', { class: 'katNo kisisel' }, ikon('kalp', 12)), tt('gez.kisisel'))
+        : aktif && !beyinMi()
+          ? h('span', { class: 'katBaslik' }, h('span', { class: 'katNo' }, String(katlar.indexOf(aktif) + 1)), aktif.ad, (depo.oturumlar[aktif.id] || {}).acik ? h('span', { class: 'katNokta' }) : null)
+          : h('span', { class: 'katEtiket' }, tt('kat.bina')),
+      // açık özel sohbetler yalnızca kişisel alanda
+      kisisel ? ozelCipleri() : null,
+      h('div', { class: 'bosluk' }),
+      kisisel ? null : h('button', { type: 'button', class: 'katEkle', onclick: () => katKurAc() }, ikon('arti', 14), tt('kat.kur')),
       katlar.length ? h('button', { type: 'button', class: 'katYonet simge', title: tt('proje.yonet'), onclick: () => git('projeler') }, ikon('proje', 15)) : null
+    );
+    asansorCiz();
+  }
+
+  // Asansör ve bina: aktif katın üstü ve altı. Oturumu açık katın ışıkları yanar.
+  function asansorCiz() {
+    const tt = depo.t;
+    const katlar = ofisKatlari();
+    const secili = seciliKat();
+    const goster = !panelMi() && katlar.length > 0 && katlar.some((p) => p.id === secili);
+    const bilgi = katlar.map((p, i) => ({ id: p.id, no: i + 1, ad: p.ad, acik: !!(depo.oturumlar[p.id] || {}).acik, bekleyen: (depo.oturumlar[p.id] || {}).bekleyen || 0 }));
+    sahne.binaAyarla(goster ? bilgi : [], goster ? secili : null);
+    asansor.hidden = !goster || katlar.length < 2;
+    if (asansor.hidden) return;
+    const i = katlar.findIndex((p) => p.id === secili);
+    doldur(
+      asansor,
+      h('button', { type: 'button', class: 'asansorOk', disabled: i >= katlar.length - 1, title: tt('bina.ust'), 'aria-label': tt('bina.ust'), onclick: () => kataGit(katlar[i + 1].id) }, ikon('yukari', 16)),
+      h(
+        'ol',
+        { class: 'asansorKatlar' },
+        [...bilgi].reverse().map((k) =>
+          h(
+            'li',
+            null,
+            h(
+              'button',
+              { type: 'button', class: 'asansorKat' + (k.id === secili ? ' secili' : '') + (k.acik ? ' acik' : ''), title: k.ad + (k.acik ? ' · ' + tt('kat.calisiyor') : ''), 'aria-current': k.id === secili ? 'true' : null, onclick: () => kataGit(k.id) },
+              h('span', { class: 'asansorNo' }, String(k.no)),
+              h('span', { class: 'asansorAd' }, k.ad),
+              k.bekleyen ? h('span', { class: 'katBekleyen' }, String(k.bekleyen)) : null
+            )
+          )
+        )
+      ),
+      h('button', { type: 'button', class: 'asansorOk', disabled: i <= 0, title: tt('bina.alt'), 'aria-label': tt('bina.alt'), onclick: () => kataGit(katlar[i - 1].id) }, ikon('asagi', 16))
     );
   }
 
@@ -658,7 +668,7 @@ export function ofisSayfasi({ git }) {
     if (!panel) return;
     if (kisiselMi()) return odalarCiz();
     if (ozelMi()) return odaCiz();
-    const katlar = depo.sirket.projeler;
+    const katlar = ofisKatlari();
     doldur(
       binaPanel,
       h('header', { class: 'binaBas' }, h('h2', null, tt('bina.baslik', { x: depo.sirket.ad })), h('p', null, tt('bina.aciklama', { x: muhatap() }))),

@@ -1,6 +1,6 @@
 // Uygulama kabuğu: üst çubuk, sol gezinme ve sayfalar.
 import { h, doldur, ikon } from './dom.js';
-import { depo, api, dinle, yukle, bildir } from './depo.js';
+import { depo, api, dinle, yukle, bildir, gorunumSec } from './depo.js';
 import { ofisSayfasi } from './sayfa/ofis.js';
 import { ekipSayfasi } from './sayfa/ekip.js';
 import { projelerSayfasi } from './sayfa/projeler.js';
@@ -16,6 +16,8 @@ import { cevrimdisiKur } from './cevrimdisi.js';
 
 const SAYFALAR = [
   ['ofis', 'ofis', ofisSayfasi],
+  // kişisel alan ofisten ayrı durur; aynı sayfa kişisel katı ve özel odaları gösterir
+  ['kisisel', 'kalp', null],
   ['projeler', 'proje', projelerSayfasi],
   ['ekip', 'ekip', ekipSayfasi],
   ['tarayici', 'dunya', tarayiciSayfasi],
@@ -29,7 +31,57 @@ const SAYFALAR = [
 const kurulan = new Map();
 let simdiki = null;
 
-function git(ad, arg) {
+// Kişisel alan mı gösteriliyor: kişisel kat ya da bir özel oda
+const kisiselGorunum = () => {
+  if (!depo.sirket) return false;
+  if (depo.gorunum.startsWith('ozel:')) return true;
+  return depo.gorunum === 'kat' && (depo.sirket.projeler.find((p) => p.id === depo.sirket.sonProje) || {}).tur === 'kisisel';
+};
+const SON_KAT = 'ofis.sonKat';
+
+async function kisiselAc() {
+  let p = depo.sirket.projeler.find((x) => x.tur === 'kisisel');
+  if (!p) {
+    const r = await api.katKisisel();
+    p = r && r.proje;
+    if (!p) return;
+  }
+  if (!kisiselGorunum()) {
+    try {
+      if (depo.sirket.sonProje && depo.sirket.sonProje !== p.id) localStorage.setItem(SON_KAT, depo.sirket.sonProje);
+    } catch {
+      /* depolama kapalı */
+    }
+  }
+  if (depo.sirket.sonProje !== p.id) {
+    await api.sirketGuncelle({ sonProje: p.id });
+    depo.sirket.sonProje = p.id;
+  }
+  if (!depo.gorunum.startsWith('ozel:')) gorunumSec('kat');
+  git('ofis', undefined, true);
+}
+
+// Kişisel alandan ofise dönüş: en son bakılan ofis katı, yoksa beyin
+async function ofiseDon() {
+  if (!kisiselGorunum()) return;
+  let son = '';
+  try {
+    son = localStorage.getItem(SON_KAT) || '';
+  } catch {
+    son = '';
+  }
+  const katlar = depo.sirket.projeler.filter((p) => p.tur !== 'kisisel');
+  const hedef = katlar.find((p) => p.id === son) || katlar[katlar.length - 1];
+  if (hedef) {
+    await api.sirketGuncelle({ sonProje: hedef.id });
+    depo.sirket.sonProje = hedef.id;
+    gorunumSec('kat');
+  } else gorunumSec('beyin');
+}
+
+function git(ad, arg, kisiselden) {
+  if (ad === 'kisisel') return kisiselAc();
+  if (ad === 'ofis' && !kisiselden) ofiseDon();
   const icerik = document.getElementById('icerik');
   if (simdiki && simdiki !== ad) {
     const eski = kurulan.get(simdiki);
@@ -53,9 +105,11 @@ function rayCiz() {
   const t = depo.t;
   doldur(
     document.getElementById('ray'),
-    SAYFALAR.map(([ad, simge]) =>
-      h('button', { type: 'button', class: 'rayDugme' + (simdiki === ad ? ' secili' : ''), onclick: () => git(ad), 'aria-current': simdiki === ad ? 'page' : null }, ikon(simge, 20), h('span', null, t('gez.' + ad)))
-    )
+    SAYFALAR.map(([ad, simge]) => {
+      // ofis ve kişisel aynı sayfayı paylaşır: hangisinin seçili olduğu görünüme göre
+      const secili = ad === 'kisisel' ? simdiki === 'ofis' && kisiselGorunum() : ad === 'ofis' ? simdiki === 'ofis' && !kisiselGorunum() : simdiki === ad;
+      return h('button', { type: 'button', class: 'rayDugme' + (secili ? ' secili' : ''), onclick: () => git(ad), 'aria-current': secili ? 'page' : null }, ikon(simge, 20), h('span', null, t('gez.' + ad)));
+    })
   );
 }
 
@@ -130,6 +184,8 @@ async function basla() {
     rayCiz();
     document.title = depo.sirket.ad;
   });
+  // kişisel alan ile ofis arasında geçince sol menünün seçili düğmesi değişir
+  dinle('kat', rayCiz);
   dinle('canli', ustCiz);
   dinle('oturum', ustCiz);
   dinle('bilgi', ustCiz);

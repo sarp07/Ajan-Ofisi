@@ -65,6 +65,7 @@ export function varsayilanSirket(dil = 'tr') {
     // tarayıcıda tıklama ve yazma her seferinde onay sorsun mu
     tarayiciOnaysiz: false,
     bildirim: true,
+    bildirimSesi: true,
   };
 }
 
@@ -321,6 +322,7 @@ export function normalle(ham) {
     tarayiciOnaysiz: !!s.tarayiciOnaysiz,
     projeKoku: path.isAbsolute(metin(s.projeKoku, 1000)) ? metin(s.projeKoku, 1000) : '',
     bildirim: s.bildirim !== false,
+    bildirimSesi: s.bildirimSesi !== false,
   };
 }
 

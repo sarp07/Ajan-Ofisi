@@ -3,6 +3,7 @@ import { iso, alpha, mix, roundRect, faceTop } from './izo.js';
 import { ofisKur, sabitCiz, duvarCiz, gokyuzu, SINIR, W, D, WALL_H } from './ofis.js';
 import { Kisi, kisiCiz, MISAFIR_GORUNUS } from './insanlar.js';
 import { SEF_ID, MISAFIR_RENK } from '../cekirdek/kimlik.js';
+import { Bina } from './bina.js';
 
 const COZ = 2; // sabit katman çözünürlük çarpanı
 const KAHVE_SURESI = 40000; // boşa düşen kişi önce kahveye, sonra oyun alanına geçer
@@ -16,11 +17,14 @@ function kisalt(ctx, metin, en) {
 }
 
 export class Sahne {
-  constructor(tuval, { secildi, bosMasa, t }) {
+  constructor(tuval, { secildi, bosMasa, katSec, t }) {
     this.tuval = tuval;
     this.ctx = tuval.getContext('2d');
     this.secildi = secildi || (() => {});
     this.bosMasa = bosMasa || (() => {});
+    this.katSec = katSec || (() => {});
+    // bina: diğer katların dilimleri ve gece şehri
+    this.bina = new Bina();
     this.t = t;
     this.sirket = null;
     this.ofis = null;
@@ -88,17 +92,33 @@ export class Sahne {
   }
 
   // ---------- kamera ----------
+  // sığdırma sınırı: ofis ve üstte, altta görünecek kat dilimleri için pay
+  sinir() {
+    const p = this.bina.pay();
+    return { minX: SINIR.minX, maxX: SINIR.maxX, minY: SINIR.minY - p.ust, maxY: SINIR.maxY + p.alt };
+  }
+
   sigdirZ() {
     const cw = this.tuval.clientWidth || 1;
     const ch = this.tuval.clientHeight || 1;
-    return Math.min(cw / (SINIR.maxX - SINIR.minX), ch / (SINIR.maxY - SINIR.minY));
+    const s = this.sinir();
+    return Math.min(cw / (s.maxX - s.minX), ch / (s.maxY - s.minY));
   }
 
   sigdir() {
+    const s = this.sinir();
     this.kam.z = this.sigdirZ();
-    this.kam.x = (SINIR.minX + SINIR.maxX) / 2;
-    this.kam.y = (SINIR.minY + SINIR.maxY) / 2;
+    this.kam.x = (s.minX + s.maxX) / 2;
+    this.kam.y = (s.minY + s.maxY) / 2;
     this.kam.elle = false;
+  }
+
+  // Binadaki katlar (alttan üste) ve aktif kat. Kat değişince kamera yeniden sığdırılır.
+  binaAyarla(katlar, aktif) {
+    const onceki = this.bina.aktif;
+    const payOnce = JSON.stringify(this.bina.pay());
+    this.bina.ayarla(katlar, aktif);
+    if (onceki !== aktif || payOnce !== JSON.stringify(this.bina.pay())) this.sigdir();
   }
 
   yakinlas(carpan, mx, my) {
@@ -159,7 +179,8 @@ export class Sahne {
       } else {
         const k = this._vur(e);
         this.uzerinde = k ? null : this._bosVur(e);
-        el.style.cursor = k || this.uzerinde ? 'pointer' : 'grab';
+        this.dilimUstu = k || this.uzerinde ? null : this._dilimVur(e);
+        el.style.cursor = k || this.uzerinde || this.dilimUstu ? 'pointer' : 'grab';
       }
     });
     el.addEventListener('pointerleave', () => (this.uzerinde = null));
@@ -171,7 +192,9 @@ export class Sahne {
           this.secildi(this.secili);
         } else {
           const bos = this._bosVur(e);
+          const dilim = bos ? null : this._dilimVur(e);
           if (bos) this.bosMasa(bos.i);
+          else if (dilim) this.katSec(dilim);
           else {
             this.secili = null;
             this.secildi(null);
@@ -197,6 +220,12 @@ export class Sahne {
       { passive: false }
     );
     el.addEventListener('dblclick', () => this.sigdir());
+  }
+
+  _dilimVur(e) {
+    const r = this.tuval.getBoundingClientRect();
+    const [wx, wy] = this.dunyaya(e.clientX - r.left, e.clientY - r.top);
+    return this.bina.vur(this.ctx, wx, wy);
   }
 
   _vur(e) {
@@ -419,11 +448,15 @@ export class Sahne {
     const kz = this.kam.z;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
+    // gece şehri ve alt katlar ofisin arkasında kalır
+    const binaVar = this.bina.katlar.length > 0;
+    if (binaVar) this.bina.arkaPlan(ctx, cw, ch);
     ctx.save();
     ctx.translate(cw / 2, ch / 2);
     ctx.scale(kz, kz);
     ctx.translate(-this.kam.x, -this.kam.y);
     ctx.imageSmoothingQuality = 'high';
+    if (binaVar) this.bina.altCiz(ctx);
     ctx.drawImage(this.sabit, SINIR.minX, SINIR.minY, SINIR.maxX - SINIR.minX, SINIR.maxY - SINIR.minY);
 
     const env = {
@@ -515,6 +548,11 @@ export class Sahne {
       }
       if (this.tvAcik) isik(20.4, 11.2, 0.8, 170, '#F2A0C0', 0.4);
       ctx.restore();
+    }
+    // aralanmış katın üstündeki katlar
+    if (binaVar) {
+      this.bina.ustCiz(ctx);
+      this.bina.etiketCiz(ctx);
     }
     ctx.restore();
 
