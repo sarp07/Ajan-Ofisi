@@ -2,6 +2,8 @@
 // 1. Uygulama arşivine yalnızca izinli dosyaların girdiğini doğrular. Fazlası varsa derlemeyi durdurur:
 //    proje klasöründe duran alakasız bir dosya ya da klasör asla kurulum dosyasına sızmasın.
 // 2. Başka işletim sistemlerine ait hazır terminal derlemelerini siler.
+// 3. macOS'ta AXe'yi (simülatör dokunma ve canlı görüntü) Resources/axe altına kopyalar. extraResources
+//    framework sembolik bağlarını bozduğu için ditto ile kopyalanır; imzalama bundan sonra gelir.
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -36,6 +38,11 @@ exports.default = async function paketSonrasi(context) {
       // hata ayıklama simgeleri kurulum dosyasını boşuna büyütür
       for (const f of fs.readdirSync(path.join(hazir, d))) if (f.endsWith('.pdb')) fs.rmSync(path.join(hazir, d, f), { force: true });
     }
+  }
+  if (platform === 'darwin') {
+    const axe = path.join(__dirname, 'axe');
+    if (!fs.existsSync(path.join(axe, 'axe'))) throw new Error('AXe yok: önce bash betik/axe-indir.sh çalıştır.');
+    require('node:child_process').execFileSync('ditto', [axe, path.join(kaynaklar, 'axe')]);
   }
   console.log(`  • paket denetimi   ${[...ust].sort().join(', ')}`);
 };

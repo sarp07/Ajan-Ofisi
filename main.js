@@ -12,12 +12,13 @@ import { takimIzle } from './cekirdek/takim-izleyici.js';
 import { SirketDeposu, MASA_SAYISI, katGorunumu } from './cekirdek/sirket.js';
 import { SkillDeposu, katalogOku, githubCoz } from './cekirdek/skiller.js';
 import { derle, oturumArgumanlari, codexArgumanlari, ozelMetni } from './cekirdek/derle.js';
-import { kabukOrtami, claudeBul, kurulumKomutu, taslakIste, jsonAyikla } from './cekirdek/claude.js';
+import { kabukOrtami, claudeBul, kurulumKomutu, taslakIste, jsonAyikla, calistir } from './cekirdek/claude.js';
 import { MOTORLAR, codexBul, girisDurumu, girisKomutu, kurulumKomutlari, codexKlasoru, codexModelleri, codexVarsayilan, motorCoz, hazirMi, motorOrtami, codexTaslak, codexAnahtarGirisi } from './cekirdek/motor.js';
 import { AnahtarDeposu } from './cekirdek/anahtarlar.js';
 import { mcpIsle } from './cekirdek/mcp.js';
 import { Guncelleyici } from './cekirdek/guncelleme.js';
 import { testAraclari, TEST_ARAC_ADLARI, testDurumu, iosAc, iosKapat, iosGoruntu, androidBaslat, androidGoruntu } from './cekirdek/test-alani.js';
+import { Simulator, axeYolu, cihazAraclari, CIHAZ_ARAC_ADLARI } from './cekirdek/simulator.js';
 import { ghBul, gitBul, ghDurum, ghGirisArg, ghKurulumKomutu, repoDurumu, klasorAdi, repoListesi, repoKlonla, yeniProje, gitIslem, githubIslem, dalListesi } from './cekirdek/github.js';
 import { githubAraclari, GITHUB_ARAC_ADLARI } from './cekirdek/github-araclari.js';
 import { sesListesi, sesUret, yaziyaCevir } from './cekirdek/ses.js';
@@ -1410,6 +1411,13 @@ function tarayiciIslemleri(kapsam) {
 }
 
 // MCP kapsamı: boş ise beyin (katlar + bütün hesaplar), değilse o katın şefi (yalnızca kendi hesapları)
+// Simülatör ve emülatör: uygulamanın içinde canlı görüntü ve dokunma (iOS: gömülü AXe, Android: adb)
+const simulator = new Simulator({
+  axe: axeYolu({ paketli: app.isPackaged, kaynaklar: process.resourcesPath, kok: KOK }),
+  env: process.env,
+  kare: (kimlik, veri, mime = 'image/jpeg') => gonder('sim:kare', { kimlik, mime, veri: veri.toString('base64') }),
+});
+
 // Katın depoları: ana klasör ve ek depolar. Ek depoların yalnızca var olanları oturuma açılır.
 const projeDepolari = (p) => [{ id: 'ana', ad: path.basename(p.klasor || '') || p.ad, klasor: p.klasor }, ...(p.depolar || [])];
 const ekDepolar = (p) =>
@@ -1461,7 +1469,7 @@ const depoOrtami = (id, depoAdi) => {
 function mcpAraclari(kapsam) {
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -1471,7 +1479,7 @@ const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git b
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : TEST_ARAC_ADLARI), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -2088,7 +2096,25 @@ function ipcKur() {
       return { hata: 'genel', ayrinti: String(e.message || e).split('\n')[0] };
     }
   };
-  h('test:durum', testIs(() => testDurumu({ env: ortam })));
+  h('test:durum', testIs(async () => ({ ...(await testDurumu({ env: ortam })), axe: simulator.axeVar() })));
+  // canlı görüntü ve etkileşim (Simülatör sayfası)
+  h('sim:akis', testIs((kimlik) => (kimlik ? simulator.akisBaslat(String(kimlik)) : simulator.akisDurdur(), true)));
+  h('sim:dokun', testIs((kimlik, x, y) => simulator.dokun(String(kimlik), { x: Number(x), y: Number(y), oran: true })));
+  h('sim:kaydir', testIs((kimlik, x1, y1, x2, y2) => simulator.kaydir(String(kimlik), { x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2), oran: true, sure: 0.25 })));
+  h('sim:yaz', testIs((kimlik, metin) => simulator.yaz(String(kimlik), String(metin || ''))));
+  h('sim:tus', testIs((kimlik, tus) => simulator.tus(String(kimlik), String(tus))));
+  h('sim:uygulamalar', testIs((udid) => simulator.uygulamalar(String(udid))));
+  h('sim:baslat', testIs(async (udid, paket) => {
+    const r = await calistir('/usr/bin/xcrun', ['simctl', 'launch', String(udid), String(paket)], { env: ortam, zamanAsimi: 30000 });
+    if (r.kod !== 0) throw new Error((r.hata || r.cikti).trim().split('\n').pop());
+    return true;
+  }));
+  // açık simülatörlerden seçilen dışındakileri kapatır (bilgisayarı rahatlatmak için)
+  h('sim:digerleriniKapat', testIs(async (birak) => {
+    const d = await testDurumu({ env: ortam });
+    for (const c of (d.ios || []).filter((x) => x.durum === 'Booted' && x.udid !== birak)) await iosKapat(ortam, c.udid).catch(() => {});
+    return true;
+  }));
   h('test:iosAc', testIs((udid) => iosAc(ortam, udid)));
   h('test:iosKapat', testIs((udid) => iosKapat(ortam, udid)));
   h('test:iosGoruntu', testIs((udid) => iosGoruntu(ortam, udid)));
@@ -2098,7 +2124,10 @@ function ipcKur() {
   h('test:sefeVer', testIs(async (katId, cihaz) => {
     const k = katlar.get(String(katId));
     if (!k || !k.oturum.acik) throw new Error('Katın oturumu kapalı. Önce Ofis sayfasından başlat.');
-    oturumaYaz(k, `Uygulamayı ${cihaz} üzerinde test et: kur, başlat, ana akışları dene, ekran görüntüleriyle kontrol et, hataları düzelttir ve kısa bir test raporu yaz.`).catch(() => {});
+    oturumaYaz(
+      k,
+      `Uygulamayı ${cihaz} üzerinde test et. Önce ios_uygulamalar (ya da android_cihazlar) ile projenin uygulamasının yüklü olup olmadığına bak: yüklüyse paket kimliğiyle ios_baslat kullan; yüklü değilse derleyip kur (Expo projesinde geliştirme derlemesi ya da exp:// şeması). Web adresini Safari'de açma, mobil uygulamanın kendisini test et. Sonra cihaz_ogeler, cihaz_dokun, cihaz_kaydir, cihaz_yaz ile ana akışları dene, ios_goruntu ile ekranı kontrol et, hataları düzelttir ve kısa bir test raporu yaz. Sahip aynı cihazı Simülatör sayfasında canlı izliyor.`
+    ).catch(() => {});
     return true;
   }));
   h('guncelleme:durum', () => ({ ...guncelleyici.durum }));
@@ -2485,6 +2514,7 @@ if (!app.requestSingleInstanceLock()) {
     kabukOrtami().then(async (env) => {
       ortam = env;
       servisler.ortamAyarla(env);
+      simulator.ortamAyarla(env);
       await motorlarYenile();
     });
     ortam = { ...process.env };
@@ -2496,6 +2526,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     if (whatsapp) whatsapp.durdur().catch(() => {});
+    simulator.akisDurdur();
     for (const b of botlar.values()) b.durdur();
     for (const k of katlar.values()) k.oturum.durdur();
   });

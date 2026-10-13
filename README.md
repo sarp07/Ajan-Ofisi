@@ -36,7 +36,7 @@
 - 🖼️ **Photos and files:** the brain opens and reads photos, videos and documents that arrive on WhatsApp and Telegram, and can send photos and files itself.
 - 🐳 **Services:** your floors' databases, caches, APIs and workers show up as cards through Docker Desktop. Start, stop, restart, live logs, ports, CPU and memory. Set a resource limit per container; if Docker crashes the app reopens it and brings the services back up. Agents use these tools instead of raw docker commands.
 - 🗄️ **Shared Postgres and ports:** one Postgres runs on the computer and each project gets its own database and user in it (projects cannot reach each other's data). If 5432 is taken, a free port is chosen. Each floor gets a permanent, non-overlapping port block; agents never start a new Postgres or pick fixed ports.
-- 📱 **Test area:** iOS simulators on Mac, and Android devices and emulators on every system when they are installed. Open a device, look at its screen or hand the test to the chief. For web tests the project's test address opens in the browser, and agents read console errors too.
+- 📱 **Simulator:** the device screen runs live inside the app. Click to tap, drag to swipe, type text, press Home or Lock, and launch installed apps. Agents use the same device through tools (list screen elements, tap, swipe, type, launch the installed app), so a mobile test opens the app itself instead of Safari. iOS simulators work on Mac and Android devices and emulators on every system when installed. One simulator at a time is recommended; a warning shows when more are running. For web tests the project's test address opens in the browser and agents read console errors too.
 - 🐙 **GitHub management:** from the project card merge or delete branches (main and the default branch are protected), open, merge and close pull requests; make the repository private or public, archive, rename it, or delete it by typing its full name. Agents do the same with their own tools; merging a PR and changing repository settings come to you for approval.
 - 🔓 **Fewer approvals:** the default permission mode is "decide automatically": reads, tests and local checks are not asked, only risky work is.
 - 🐙 **Developer friendly:** open a floor from an existing folder, from scratch (with git and a GitHub repo) or by cloning from GitHub. Every project card shows branch, changes and open pull requests; pull, commit, push and new branch are one click. The browser has iPhone, iPad and Android modes and an error console.
@@ -151,4 +151,4 @@ npm run paket:linux   # AppImage and deb
 
 ## License
 
-[MIT](LICENSE) © solazan. Catalog skills are downloaded from their own repositories and keep their own licenses.
+[MIT](LICENSE) © solazan. Catalog skills are downloaded from their own repositories and keep their own licenses. The Mac app bundles [AXe](https://github.com/cameroncooke/AXe) (MIT) for simulator input and live video; its license ships next to it.

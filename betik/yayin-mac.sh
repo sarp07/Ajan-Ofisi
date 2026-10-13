@@ -26,6 +26,8 @@ SURUM="$(node -p "require('./package.json').version")"
 [[ -d node_modules/electron-builder ]] || npm install
 npm test
 rm -rf cikti
+# AXe (simülatör dokunma ve canlı görüntü) uygulamanın içine gömülür
+[[ -x paket/axe/axe ]] || bash betik/axe-indir.sh
 
 # electron-builder uygulamayı sertifikayla imzalar, Apple'a onaya gönderir ve onayı uygulamaya işler.
 # Onay birkaç dakika sürebilir.

@@ -36,7 +36,7 @@
 - 🖼️ **Fotoğraf ve dosya:** WhatsApp ve Telegram'dan gelen fotoğraf, video ve belgeleri beyin açıp okur; beyin de fotoğraf ve dosya gönderebilir.
 - 🐳 **Servisler:** katların veritabanı, önbellek, API ve worker servisleri Docker Desktop üzerinden kart olarak görünür. Başlat, durdur, yeniden başlat, canlı log, port, CPU ve bellek. Kap başına kaynak sınırı konur, Docker çökerse uygulama onu yeniden açıp servisleri kaldırır. Ajanlar ham docker komutu yerine bu araçları kullanır.
 - 🗄️ **Ortak Postgres ve portlar:** bilgisayarda tek bir Postgres çalışır, her proje içinde kendi veritabanını ve kullanıcısını alır (projeler birbirinin verisine erişemez). 5432 doluysa çakışmayan bir port seçilir. Her kata kalıcı, çakışmayan bir port bloğu verilir; ajanlar yeni Postgres kurmaz, sabit port seçmez.
-- 📱 **Test alanı:** Mac'te iOS simülatörleri, kurulu olduğunda her sistemde Android cihaz ve emülatörleri. Cihazı açar, ekranına bakar ya da testi şefe verirsin. Web testleri için projenin test adresi tarayıcıda açılır, ajanlar konsol hatalarını da okur.
+- 📱 **Simülatör:** cihaz ekranı uygulamanın içinde canlı çalışır. Tıklayınca dokunur, sürükleyince kaydırır; metin yazar, Ana ekran ve Kilit tuşlarına basar, kurulu uygulamaları başlatırsın. Ajanlar aynı cihazı araçlarla kullanır (ekrandaki öğeleri listeler, dokunur, kaydırır, yazar, kurulu uygulamayı açar); mobil test Safari yerine uygulamanın kendisini açar. Mac'te iOS simülatörleri, kurulu olduğunda her sistemde Android cihaz ve emülatörleri. Aynı anda tek simülatör önerilir; fazlası açıksa uyarı çıkar. Web testleri için projenin test adresi tarayıcıda açılır, ajanlar konsol hatalarını da okur.
 - 🐙 **GitHub yönetimi:** proje kartından dalları birleştir ya da sil (main ve varsayılan dal korunur), PR aç, birleştir, kapat; depoyu gizli/açık yap, arşivle, adını değiştir ya da deponun tam adını yazarak sil. Ajanlar aynı işleri kendi araçlarıyla yapar; PR birleştirme ve depo ayarı senin onayına gelir.
 - 🔓 **Daha az onay:** varsayılan izin modu "otomatik karar ver": okuma, test ve yerel kontroller sorulmaz, yalnızca riskli işler sorulur.
 - 🐙 **Geliştirici dostu:** yeni katı var olan klasörden, sıfırdan (git ve GitHub reposuyla) ya da GitHub'dan klonlayarak açarsın. Her proje kartında dal, değişiklik, açık PR'lar; pull, commit, push ve yeni dal tek tık. Tarayıcıda iPhone, iPad, Android modları ve hata konsolu.
@@ -151,4 +151,4 @@ npm run paket:linux   # AppImage ve deb
 
 ## Lisans
 
-[MIT](LICENSE) © solazan. Katalogdaki skiller kendi depolarından indirilir ve kendi lisanslarına tabidir.
+[MIT](LICENSE) © solazan. Katalogdaki skiller kendi depolarından indirilir ve kendi lisanslarına tabidir. Mac uygulaması simülatör girdisi ve canlı görüntü için [AXe](https://github.com/cameroncooke/AXe)'yi (MIT) içinde taşır; lisansı yanında gelir.

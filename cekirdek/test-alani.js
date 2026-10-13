@@ -46,15 +46,21 @@ export function testAraclari({ env }) {
       },
     };
     araclar.ios_ac = {
-      aciklama: 'Simülatörü başlatır ve Simulator uygulamasını öne getirir. Zaten açıksa bir şey yapmaz.',
+      aciklama: 'Simülatörü başlatır; görüntüsü uygulamanın Simülatör sayfasında canlı akar (Mac\'in Simulator penceresi açılmaz). Önce ios_cihazlar ile zaten açık (Booted) bir simülatör var mı bak ve onu kullan; yalnızca proje farklı bir cihaz gerektiriyorsa yenisini aç. Birden çok simülatör bilgisayarı yorar.',
       sema: nesne({ udid: yazi('Simülatörün kimliği (ios_cihazlar)') }, ['udid']),
       calistir: async (g) => {
         await simctl(env, ['boot', String(g.udid)]).catch((e) => {
           if (!/Booted/i.test(e.message)) throw e;
         });
-        await calistir('/usr/bin/open', ['-a', 'Simulator'], { env, zamanAsimi: 15000 });
-        return 'Simülatör açık.';
+        const j = JSON.parse(await simctl(env, ['list', 'devices', 'booted', '-j']));
+        const acik = Object.values(j.devices).flat().length;
+        return acik > 1 ? `Simülatör açık. Uyarı: şu an ${acik} simülatör açık, bilgisayarı yorar; kullanmadıklarını ios_kapat ile kapat.` : 'Simülatör açık.';
       },
+    };
+    araclar.ios_kapat = {
+      aciklama: 'Simülatörü kapatır (kullanılmayan simülatörleri kapatarak bilgisayarı rahatlat).',
+      sema: nesne({ udid: yazi('Simülatörün kimliği') }, ['udid']),
+      calistir: async (g) => (await simctl(env, ['shutdown', String(g.udid)]), 'Kapatıldı.'),
     };
     araclar.ios_kur = {
       aciklama: 'Derlenmiş .app paketini simülatöre kurar.',
@@ -67,7 +73,7 @@ export function testAraclari({ env }) {
       calistir: async (g) => (await simctl(env, ['launch', String(g.udid), String(g.paket)]), 'Başlatıldı.'),
     };
     araclar.ios_adres = {
-      aciklama: 'Simülatörde bir adres ya da derin bağlantı açar (Safari ya da uygulamanın kendi şeması).',
+      aciklama: 'Simülatörde bir adres ya da derin bağlantı açar. http(s) adresi Safari\'yi açar: yalnızca web sitesini test ederken kullan. Projenin mobil uygulamasını test etmek için ios_uygulamalar ile paket kimliğini bul ve ios_baslat kullan; Expo geliştirme sunucusu için exp:// ya da uygulamanın kendi şemasını ver.',
       sema: nesne({ udid: yazi('Simülatörün kimliği'), adres: yazi('Adres ya da derin bağlantı') }, ['udid', 'adres']),
       calistir: async (g) => (await simctl(env, ['openurl', String(g.udid), String(g.adres)]), 'Açıldı.'),
     };
@@ -132,7 +138,7 @@ export function testAraclari({ env }) {
   return araclar;
 }
 
-export const TEST_ARAC_ADLARI = ['ios_cihazlar', 'ios_ac', 'ios_kur', 'ios_baslat', 'ios_adres', 'ios_goruntu', 'android_cihazlar', 'android_kur', 'android_adres', 'android_goruntu'];
+export const TEST_ARAC_ADLARI = ['ios_cihazlar', 'ios_ac', 'ios_kapat', 'ios_kur', 'ios_baslat', 'ios_adres', 'ios_goruntu', 'android_cihazlar', 'android_kur', 'android_adres', 'android_goruntu'];
 
 // ---------- Test alanı sayfası ----------
 // Sayfa için düz işlevler: cihaz listesi, aç, kapat, ekran görüntüsü. Ajan araçlarıyla aynı komutları kullanır.
@@ -188,7 +194,6 @@ export async function iosAc(env, udid) {
   await simctl(env, ['boot', String(udid)]).catch((e) => {
     if (!/Booted/i.test(e.message)) throw e;
   });
-  await calistir('/usr/bin/open', ['-a', 'Simulator'], { env, zamanAsimi: 15000 });
 }
 
 export const iosKapat = (env, udid) => simctl(env, ['shutdown', String(udid)]);
