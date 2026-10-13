@@ -10,6 +10,14 @@ const { autoUpdater } = electronUpdater;
 const ARALIK = 6 * 60 * 60 * 1000; // 6 saat
 const ERTELE = 24 * 60 * 60 * 1000; // "sonra" denince 1 gün sorulmaz
 
+// Güncelleme hatasını sahibin anlayacağı bir koda çevirir. Ham ileti yine saklanır (ayrıntı için).
+// hazirlaniyor: sürüm yayımlandı ama dosyaları henüz yüklenmedi (latest-*.yml ya da paket 404). baglanti: internet yok.
+function hataDurumu(e) {
+  const ileti = String((e && e.message) || e).split('\n')[0].slice(0, 300);
+  const kod = /latest[\w-]*\.yml|404|Cannot find/i.test(ileti) ? 'hazirlaniyor' : /ENOTFOUND|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|net::ERR|network/i.test(ileti) ? 'baglanti' : '';
+  return { asama: 'hata', hata: ileti, hataKod: kod };
+}
+
 export class Guncelleyici {
   // app: Electron app. degisti(durum): arayüze bildirim. dikkat(durum): pencere arkadayken sahibin dikkatini çeker.
   constructor({ app, dosya, degisti, dikkat }) {
@@ -86,7 +94,7 @@ export class Guncelleyici {
       this.ayarla({ asama: 'indi', yuzde: 100, sor: true });
       this.dikkat({ ...this.durum });
     });
-    autoUpdater.on('error', (e) => this.ayarla({ asama: 'hata', hata: String((e && e.message) || e).split('\n')[0].slice(0, 300) }));
+    autoUpdater.on('error', (e) => this.ayarla(hataDurumu(e)));
     if (otomatik) this.otomatik(true);
   }
 
@@ -111,7 +119,7 @@ export class Guncelleyici {
     try {
       await autoUpdater.checkForUpdates();
     } catch (e) {
-      this.ayarla({ asama: 'hata', hata: String((e && e.message) || e).split('\n')[0].slice(0, 300) });
+      this.ayarla(hataDurumu(e));
     }
     return { ...this.durum };
   }
@@ -122,7 +130,7 @@ export class Guncelleyici {
     try {
       await autoUpdater.downloadUpdate();
     } catch (e) {
-      this.ayarla({ asama: 'hata', hata: String((e && e.message) || e).split('\n')[0].slice(0, 300) });
+      this.ayarla(hataDurumu(e));
     }
     return { ...this.durum };
   }

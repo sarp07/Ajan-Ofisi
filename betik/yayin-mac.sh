@@ -43,7 +43,18 @@ if command -v gh >/dev/null 2>&1; then
     gh release create "$ETIKET" --title "$ETIKET" --generate-notes
   fi
   # dmg ilk kurulum için; zip, blockmap ve latest-mac.yml uygulama içi güncelleme için
-  gh release upload "$ETIKET" cikti/*.dmg cikti/*.zip cikti/*.blockmap cikti/latest-mac.yml --clobber
+  # Paketler önce, latest-mac.yml en son yüklenir: uygulamalar dosyalar hazır olmadan yeni sürümü görmesin.
+  # İnternet takılırsa her dosya birkaç kez yeniden denenir.
+  yukle() {
+    for i in 1 2 3 4 5; do
+      gh release upload "$ETIKET" "$1" --clobber && return 0
+      echo "$(basename "$1") yüklenemedi, yeniden deneniyor ($i)…" >&2
+      sleep 10
+    done
+    return 1
+  }
+  for f in cikti/*.dmg cikti/*.zip cikti/*.blockmap; do yukle "$f"; done
+  yukle cikti/latest-mac.yml
   echo "Tamam: dmg dosyaları $ETIKET sürümüne yüklendi."
 else
   echo "Tamam: dmg dosyaları cikti klasöründe. GitHub'da $ETIKET sürümüne elle yükle (gh kurulu değil)."

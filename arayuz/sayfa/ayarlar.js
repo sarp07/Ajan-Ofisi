@@ -359,7 +359,7 @@ export function ayarlarSayfasi({ git } = {}) {
       var: ['uyari', t('guncel.var', { x: g.surum })],
       iniyor: ['donen', t('guncel.yuzde', { x: g.yuzde || 0 })],
       indi: ['iyi', t('guncel.hazir', { x: g.surum })],
-      hata: ['kotu', g.hata || t('hata.genel')],
+      hata: ['kotu', g.hataKod ? t('guncel.hataKod.' + g.hataKod) : g.hata || t('hata.genel')],
     }[g.asama] || [null, g.etkin === false ? t('guncel.gelistirme') : t('guncel.bekliyor')];
     return h(
       'section',
