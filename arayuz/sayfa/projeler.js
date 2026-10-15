@@ -1,6 +1,7 @@
 // Projeler sayfası: her projenin klasörü, alan adları, bağlı hesapları, test bilgisi ve kayıt defteri.
 import { h, doldur, ikon, alan, anahtar, cipGirisi, kopyala } from '../dom.js';
-import { depo, api, dinle, bildir, hataMetni } from '../depo.js';
+import { depo, api, dinle, bildir, hataMetni, gorunumSec } from '../depo.js';
+import { sehirKur, KAT_RENK } from '../sehir.js';
 import { katKurAc } from '../katKur.js';
 
 export const PLATFORMLAR = ['appledev', 'apple', 'playconsole', 'github', 'vercel', 'cloudflare', 'supabase', 'firebase', 'expo', 'google', 'gmail', 'telegram', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'diger'];
@@ -117,16 +118,202 @@ export function projelerSayfasi({ git }) {
     );
   }
 
+  // ---------- ada şehir (harita) ----------
+  // Kule projelerin katlarından oluşur. Liste görünümü eski kartlardır; seçim bu bilgisayarda hatırlanır.
+  let liste = (() => {
+    try {
+      return localStorage.getItem('projeler.gorunum') === 'liste';
+    } catch {
+      return false;
+    }
+  })();
+  const sehirKap = h('div', { class: 'sehirKap' });
+  const sehirHud = h('div', { class: 'sehirHud' });
+  const sehirAraclar = h('div', { class: 'sehirAraclar' });
+  const sehirAkis = h('ol', { class: 'sehirAkis' });
+  const sehirYan = h('aside', { class: 'sehirYan' });
+  const sehirAlan = h('div', { class: 'sehirAlan' }, h('div', { class: 'sehirSahne' }, sehirKap, sehirHud, sehirAraclar, sehirAkis, h('div', { class: 'sehirIpucu' })), sehirYan);
+  let sehir = null;
+  let haritaSecili = null;
+  let saatBilgi = { evre: 'gunduz', saat: '' };
+  const calisma = new Map(); // kat -> son araç zamanı
+  const hataBitis = new Map(); // kat -> hatanın gösterileceği son an
+  const bitti = new Map(); // kat -> "bitti" balonunun son anı
+  const envEksik = new Map();
+  const ofisKatlari = () => depo.sirket.projeler.filter((p) => p.tur !== 'kisisel');
+  function katDurumu(p) {
+    const o = depo.oturumlar[p.id] || {};
+    if ((hataBitis.get(p.id) || 0) > Date.now()) return 'hata';
+    if (o.bekleyen) return 'onay';
+    if (o.acik && Date.now() - (calisma.get(p.id) || 0) < 20000) return 'calisiyor';
+    if (o.acik) return 'acik';
+    return 'bosta';
+  }
+  function sehirVeri() {
+    if (!sehir) return;
+    const katlar = ofisKatlari().map((p) => {
+      const d = ozetler.get(p.id);
+      return { id: p.id, ad: p.ad, durum: katDurumu(p), ekip: [p.sef.ad, ...p.ajanlar.map((a) => a.ad)], sv: Math.min(99, 1 + Math.floor(((d && d.kayitSayisi) || 0) / 40)), baloncuk: (bitti.get(p.id) || 0) > Date.now() ? '✅' : null };
+    });
+    if (!haritaSecili || !katlar.some((k) => k.id === haritaSecili)) haritaSecili = (katlar.find((k) => k.id === depo.sirket.sonProje) || katlar[katlar.length - 1] || {}).id || null;
+    sehir.veriKoy(katlar, haritaSecili);
+  }
+  function sehirKurulum() {
+    if (sehir) return;
+    sehir = sehirKur(sehirKap, {
+      t: (k, a) => depo.t(k, a),
+      katSec: (id) => {
+        haritaSecili = id;
+        sehirYanCiz();
+      },
+      kataGir: (id) => kataGir(id),
+      katKur: () => katKurAc({ bitti: () => yenile() }),
+      kisisel: () => git('kisisel'),
+      servisler: () => git('servisler'),
+      saat: (evre, saat) => {
+        saatBilgi = { evre, saat };
+        sehirHudCiz();
+      },
+    });
+    api.beyinOlayDinle((e) => {
+      if (!e || !e.katId) return;
+      const p = depo.sirket.projeler.find((x) => x.id === e.katId);
+      if (!p || p.tur === 'kisisel') return;
+      if (e.tur === 'arac' || e.tur === 'istek') calisma.set(p.id, Date.now());
+      if (e.tur === 'istek') sehir.asansor(p.id);
+      if (e.tur === 'hata') hataBitis.set(p.id, Date.now() + 60000);
+      if (e.tur === 'bitti') {
+        calisma.delete(p.id);
+        bitti.set(p.id, Date.now() + 6000);
+      }
+      if (['istek', 'bitti', 'onay', 'hata', 'ani'].includes(e.tur)) sehirAkisEkle(p, e);
+      sehirVeri();
+    });
+    setInterval(() => !kok.hidden && !liste && sehirVeri(), 3000);
+  }
+  async function kataGir(id) {
+    await api.sirketGuncelle({ sonProje: id });
+    depo.sirket.sonProje = id;
+    gorunumSec('kat');
+    git('ofis', undefined, true);
+  }
+  function sehirHudCiz() {
+    const t = depo.t;
+    const katlar = ofisKatlari();
+    const kisi = katlar.reduce((n, p) => n + 1 + p.ajanlar.length, 0);
+    const ozet = katlar.map((p) => ozetler.get(p.id)).filter(Boolean);
+    const gorev = ozet.reduce((n, d) => n + ((d.acikGorevler && d.acikGorevler.length) || 0), 0);
+    const onay = katlar.reduce((n, p) => n + ((depo.oturumlar[p.id] || {}).bekleyen || 0), 0);
+    const calisan = katlar.filter((p) => (depo.oturumlar[p.id] || {}).acik).length;
+    doldur(
+      sehirHud,
+      h('div', { class: 'sehirKart' }, h('h1', null, t('sehir.kule', { x: depo.sirket.ad })), h('p', null, t('sehir.ozet', { k: katlar.length, x: kisi }))),
+      h('div', { class: 'sehirKart sehirGun' }, h('div', null, h('b', null, String(calisan)), h('span', null, t('sehir.acikKat'))), h('div', null, h('b', null, String(gorev)), h('span', null, t('sehir.acikGorev'))), h('div', { class: onay ? 'uyari' : '' }, h('b', null, String(onay)), h('span', null, t('sehir.onay'))), h('div', null, h('b', null, saatBilgi.saat || '--:--'), h('span', null, t('sehir.evre.' + saatBilgi.evre))))
+    );
+    doldur(
+      sehirAraclar,
+      h('button', { type: 'button', class: 'dugme', onclick: () => sehir && sehir.geceGunduz() }, '☾ ', t('sehir.geceGunduz')),
+      h('button', { type: 'button', class: 'dugme', onclick: () => gorunumDegis(true) }, ikon('proje', 14), t('sehir.liste')),
+      h('button', { type: 'button', class: 'dugme ana', onclick: () => katKurAc({ bitti: () => yenile() }) }, ikon('arti', 14), t('kat.kur'))
+    );
+  }
+  function sehirAkisEkle(p, e) {
+    const i = ofisKatlari().findIndex((x) => x.id === p.id);
+    const ikonu = { istek: '📨', bitti: '✅', onay: '✋', hata: '❌', ani: '✨' }[e.tur];
+    const li = h('li', { class: 'beyinOlay', style: `--r:${KAT_RENK[i % KAT_RENK.length]}` }, h('span', null, ikonu), h('span', null, depo.t('sehir.olay.' + e.tur, { x: p.ad })));
+    sehirAkis.prepend(li);
+    while (sehirAkis.children.length > 4) sehirAkis.lastChild.remove();
+    [...sehirAkis.children].forEach((c, k) => (c.style.opacity = String(1 - k * 0.22)));
+  }
+  // sağ panel: seçili kat (oyun kartı gibi)
+  function sehirYanCiz() {
+    const t = depo.t;
+    const katlar = ofisKatlari();
+    const p = katlar.find((x) => x.id === haritaSecili);
+    if (!p) {
+      doldur(sehirYan, h('div', { class: 'sehirBos' }, h('h2', null, t('sehir.bosBaslik')), h('p', null, t('sehir.bosAciklama', { x: depo.sirket.beyin.ad })), h('button', { type: 'button', class: 'dugme ana', onclick: () => katKurAc({ bitti: () => yenile() }) }, ikon('arti', 14), t('kat.kur'))));
+      return;
+    }
+    const i = katlar.indexOf(p);
+    const renk = KAT_RENK[i % KAT_RENK.length];
+    const durum = katDurumu(p);
+    const d = ozetler.get(p.id);
+    const r = repolar.get(p.id);
+    const son = d && d.istekler.length ? d.istekler[d.istekler.length - 1] : null;
+    const gorevler = (d && d.acikGorevler) || [];
+    const eksik = envEksik.get(p.id);
+    if (eksik === undefined) {
+      envEksik.set(p.id, null);
+      api.ortamDurum(p.id).then((x) => {
+        envEksik.set(p.id, x && x.birimler ? x.birimler.reduce((n, b) => n + b.degiskenler.filter((v) => v.durum === 'eksik').length, 0) : null);
+        if (haritaSecili === p.id) sehirYanCiz();
+      });
+    }
+    const sv = Math.min(99, 1 + Math.floor(((d && d.kayitSayisi) || 0) / 40));
+    doldur(
+      sehirYan,
+      h(
+        'div',
+        { class: 'sehirYanBas', style: `--r:${renk}` },
+        h('div', { class: 'sehirKatNo' }, t('sehir.katNo', { x: i + 1 }), h('span', { class: 'sehirSv' }, t('sehir.sv', { x: sv }))),
+        h('h2', null, p.ad, h('span', { class: 'sehirDurum', 'data-d': durum }, t('sehir.durum.' + durum))),
+        p.aciklama ? h('p', null, p.aciklama) : h('code', null, kisaYol(p.klasor || ''))
+      ),
+      h(
+        'div',
+        { class: 'sehirYanGovde' },
+        h(
+          'section',
+          null,
+          h('h3', null, t('sehir.durumBaslik')),
+          r && r.depo ? h('div', { class: 'sehirSatir' }, ikon('dal', 13), h('b', null, r.dal || '-'), h('span', null, r.degisen ? t('github.degisen', { x: r.degisen }) : t('github.temiz'))) : null,
+          h('div', { class: 'sehirSatir' }, ikon('kasa', 13), eksik ? h('b', { class: 'kotuYazi' }, t('ortam.eksikSayi', { x: eksik })) : eksik === 0 ? h('b', null, t('ortam.tamam')) : h('span', null, '…')),
+          p.portBlok ? h('div', { class: 'sehirSatir' }, ikon('sunucu', 13), h('span', null, t('sehir.portlar')), h('b', null, `${4000 + p.portBlok * 100}–${4000 + p.portBlok * 100 + 99}`)) : null,
+          d && d.sonZaman ? h('div', { class: 'sehirSatir' }, ikon('saat', 13), h('span', null, t('proje.kaldi', { x: neZaman(d.sonZaman, t) }))) : null
+        ),
+        h(
+          'section',
+          null,
+          h('h3', null, t('sehir.gorevler', { x: gorevler.length })),
+          gorevler.length ? gorevler.slice(0, 6).map((g) => h('div', { class: 'sehirGorev' }, h('span', { class: 'kutucuk' }), h('span', null, g.metin || String(g)), g.kim ? h('small', null, g.kim) : null)) : h('p', { class: 'sehirSoluk' }, t('sehir.gorevYok'))
+        ),
+        h('section', null, h('h3', null, t('sehir.ekip', { x: p.ajanlar.length + 1 })), h('div', { class: 'sehirEkip' }, [p.sef, ...p.ajanlar].map((a, k) => h('span', { class: 'sehirUye' + (k === 0 ? ' sef' : '') }, h('span', { style: `background:${a.renk || renk}` }, (a.ad || '?')[0]), a.ad)))),
+        son ? h('section', null, h('h3', null, t('sehir.sonIs')), h('div', { class: 'sehirSon' }, son.istek)) : null
+      ),
+      h('div', { class: 'sehirYanAlt' }, h('button', { type: 'button', class: 'dugme', onclick: () => ac(p) }, ikon('ayar', 14), t('sehir.ayarlar')), h('button', { type: 'button', class: 'dugme ana', onclick: () => kataGir(p.id) }, ikon('ileriOk', 14), t('sehir.kataGir')))
+    );
+  }
+  function gorunumDegis(listeMi) {
+    liste = listeMi;
+    try {
+      localStorage.setItem('projeler.gorunum', liste ? 'liste' : 'harita');
+    } catch {
+      /* depolama kapalı */
+    }
+    if (liste && sehir) sehir.gizle();
+    ciz();
+  }
+
   function ciz() {
     const t = depo.t;
     const s = depo.sirket;
+    kok.classList.toggle('haritaModu', !liste);
+    if (!liste) {
+      sehirKurulum();
+      if (!kok.contains(sehirAlan)) doldur(kok, sehirAlan, perde, cekmece);
+      sehirVeri();
+      sehirHudCiz();
+      sehirYanCiz();
+      if (!kok.hidden) sehir.goster();
+      return;
+    }
     doldur(
       kok,
       h(
         'header',
         { class: 'sayfaBas' },
         h('div', null, h('h1', null, t('proje.baslik')), h('p', null, t('proje.aciklama', { x: s.sef.ad }))),
-        h('button', { type: 'button', class: 'dugme ana', onclick: () => katKurAc({ bitti: () => yenile() }) }, ikon('arti', 15), t('proje.yeni'))
+        h('div', { class: 'satirDugmeler' }, h('button', { type: 'button', class: 'dugme', onclick: () => gorunumDegis(false) }, ikon('ofis', 15), t('sehir.harita')), h('button', { type: 'button', class: 'dugme ana', onclick: () => katKurAc({ bitti: () => yenile() }) }, ikon('arti', 15), t('proje.yeni')))
       ),
       h(
         'div',
@@ -1061,6 +1248,10 @@ export function projelerSayfasi({ git }) {
     kok,
     goster(arg) {
       ciz();
+      if (!liste && sehir) {
+        if (depo.sirket.sonProje) sehir.sec(depo.sirket.sonProje);
+        sehir.goster();
+      }
       yenile();
       if (arg && arg.yeni) ac({ yeni: true });
       else if (arg && arg.id) {
@@ -1069,6 +1260,7 @@ export function projelerSayfasi({ git }) {
       }
     },
     gizle() {
+      if (sehir) sehir.gizle();
       if (kapatmaIsi) kapatmaIsi(), (kapatmaIsi = null);
       acik = null;
       cekmece.hidden = true;

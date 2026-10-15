@@ -15,7 +15,8 @@ import { guncellemeKur } from './guncelleme.js';
 import { cevrimdisiKur } from './cevrimdisi.js';
 
 const SAYFALAR = [
-  ['ofis', 'ofis', ofisSayfasi],
+  // beyin: Mahmut'un canlı beyni ve konuşması. Katlar Projeler'deki şehirden açılır (aynı sayfada gösterilir).
+  ['ofis', 'beyin', ofisSayfasi],
   // kişisel alan ofisten ayrı durur; aynı sayfa kişisel katı ve özel odaları gösterir
   ['kisisel', 'kalp', null],
   ['projeler', 'proje', projelerSayfasi],
@@ -107,8 +108,10 @@ function rayCiz() {
     document.getElementById('ray'),
     SAYFALAR.map(([ad, simge]) => {
       // ofis ve kişisel aynı sayfayı paylaşır: hangisinin seçili olduğu görünüme göre
-      const secili = ad === 'kisisel' ? simdiki === 'ofis' && kisiselGorunum() : ad === 'ofis' ? simdiki === 'ofis' && !kisiselGorunum() : simdiki === ad;
-      return h('button', { type: 'button', class: 'rayDugme' + (secili ? ' secili' : ''), onclick: () => git(ad), 'aria-current': secili ? 'page' : null }, ikon(simge, 20), h('span', null, t('gez.' + ad)));
+      const katta = simdiki === 'ofis' && depo.gorunum === 'kat' && !kisiselGorunum();
+      const secili = ad === 'kisisel' ? simdiki === 'ofis' && kisiselGorunum() : ad === 'ofis' ? simdiki === 'ofis' && !kisiselGorunum() && !katta : ad === 'projeler' ? simdiki === 'projeler' || katta : simdiki === ad;
+      const tikla = ad === 'ofis' ? () => (gorunumSec('beyin'), git('ofis', undefined, true)) : () => git(ad);
+      return h('button', { type: 'button', class: 'rayDugme' + (secili ? ' secili' : ''), onclick: tikla, 'aria-current': secili ? 'page' : null }, ikon(simge, 20), h('span', null, t('gez.' + ad)));
     })
   );
 }

@@ -1,11 +1,11 @@
 // Ofis sayfası: kat şeridi, canlı sahne, katın terminali ve şefle konuşma paneli, ekip ve görev paneli.
 import { h, doldur, ikon, kopyala, saatYaz, mdMetin, ayirici } from '../dom.js';
+import { Beyin3D } from '../beyin3d.js';
 import { depo, api, dinle, bildir, hataMetni, kisiBilgi, seciliKat, terminalKati, gorunumSec } from '../depo.js';
 import { Sahne } from '../sahne.js';
 import { sessizMi, sessizYap } from '../ses.js';
 import { odaSecici } from '../odaSecici.js';
 import { petek } from '../petek.js';
-import { katKurAc } from '../katKur.js';
 import { basHarf, MISAFIR_RENK } from '../../cekirdek/kimlik.js';
 import { neZaman } from './projeler.js';
 
@@ -574,12 +574,12 @@ export function ofisSayfasi({ git }) {
         ? h('span', { class: 'katBaslik' }, h('span', { class: 'katNo kisisel' }, ikon('kalp', 12)), tt('gez.kisisel'))
         : aktif && !beyinMi()
           ? h('span', { class: 'katBaslik' }, h('span', { class: 'katNo' }, String(katlar.indexOf(aktif) + 1)), aktif.ad, (depo.oturumlar[aktif.id] || {}).acik ? h('span', { class: 'katNokta' }) : null)
-          : h('span', { class: 'katEtiket' }, tt('kat.bina')),
+          : h('span', { class: 'katEtiket' }, tt('beyin.serit')),
       // açık özel sohbetler yalnızca kişisel alanda
       kisisel ? ozelCipleri() : null,
       h('div', { class: 'bosluk' }),
-      kisisel ? null : h('button', { type: 'button', class: 'katEkle', onclick: () => katKurAc() }, ikon('arti', 14), tt('kat.kur')),
-      katlar.length ? h('button', { type: 'button', class: 'katYonet simge', title: tt('proje.yonet'), onclick: () => git('projeler') }, ikon('proje', 15)) : null
+      // katlar artık Projeler'deki şehirden açılır; katta iken oraya dönüş
+      !kisisel && !beyinMi() && katlar.length ? h('button', { type: 'button', class: 'katEkle', onclick: () => git('projeler') }, ikon('geri', 14), tt('beyin.sehreDon')) : null
     );
     asansorCiz();
   }
@@ -662,37 +662,243 @@ export function ofisSayfasi({ git }) {
     kok.classList.toggle('ozelModu', ozelMi());
     kok.classList.toggle('kisiselModu', kisiselMi());
     binaPanel.hidden = !panel;
+    if (beyin3d && !beyinMi()) beyin3d.gizle();
     tuval.hidden = panel;
     yakinlik.hidden = panel;
     if (panel) bosKart.hidden = true;
     if (!panel) return;
     if (kisiselMi()) return odalarCiz();
     if (ozelMi()) return odaCiz();
-    const katlar = ofisKatlari();
+    // beyin görünümü: canlı beyin (bir kez kurulur, görünürken çizilir)
+    beyinPanelCiz();
+  }
+
+  // ---------- canlı beyin ----------
+  // Her proje bir lob, her anı ve not bir nöron. Olaylar çekirdekten loba sinyal olarak gider.
+  let beyin3d = null;
+  let beyinVeri = null;
+  let beyinYukleniyor = false;
+  let beyinPanelAcik = (() => {
+    try {
+      return localStorage.getItem('beyin.panel') !== '0';
+    } catch {
+      return true;
+    }
+  })();
+  let seciliNot = null;
+  let notAra = '';
+  const beyinKap = h('div', { class: 'beyinKap' });
+  const beyinHud = h('div', { class: 'beyinHud' });
+  const beyinAkis = h('ol', { class: 'beyinAkis', 'aria-live': 'off' });
+  const beyinAraclar = h('div', { class: 'beyinAraclar' });
+  const beyinYan = h('aside', { class: 'beyinYan' });
+  const beyinSahne = h('div', { class: 'beyinSahne' }, beyinKap, beyinHud, beyinAraclar, beyinAkis);
+  const beyinGovde = h('div', { class: 'beyinGovde' }, beyinSahne, beyinYan);
+  let sonBeyinOlay = Date.now();
+  let gerginBitis = 0;
+
+  function beyinKur() {
+    if (beyin3d) return;
+    const tt = depo.t;
+    beyin3d = new Beyin3D(beyinKap, {
+      notTikla: (n) => notAc(n.id),
+      lobTikla: () => {},
+      turAdi: (tur) => tt('beyin.tur.' + tur),
+    });
+    api.beyinOlayDinle((e) => {
+      if (!e || !beyin3d) return;
+      sonBeyinOlay = Date.now();
+      if (e.tur === 'hata') gerginBitis = Date.now() + 60000;
+      beyin3d.olay(e.katId);
+      beyinAkisEkle(e);
+      if (e.tur === 'ani') beyinYenile();
+    });
+    setInterval(() => {
+      if (!beyin3d || !beyin3d.calisiyor) return;
+      const o = depo.oturumlar || {};
+      const bekleyen = Object.values(o).some((x) => x && x.bekleyen);
+      const bos = Date.now() - sonBeyinOlay > 120000;
+      beyin3d.ruhAyarla({ gergin: Date.now() < gerginBitis, ruya: bos && !bekleyen });
+      ruhCiz(Date.now() < gerginBitis ? 'gergin' : bekleyen ? 'mesgul' : bos ? 'ruya' : 'odakli');
+    }, 2000);
+    setInterval(() => beyin3d && beyin3d.calisiyor && beyinYenile(), 60000);
+  }
+
+  let ruhSimdi = '';
+  function ruhCiz(ruh) {
+    if (ruh === ruhSimdi) return;
+    ruhSimdi = ruh;
+    const e = beyinHud.querySelector('.beyinRuh');
+    if (e) {
+      e.dataset.r = ruh;
+      e.lastChild.textContent = depo.t('beyin.ruh.' + ruh);
+    }
+  }
+
+  async function beyinYenile() {
+    if (beyinYukleniyor) return;
+    beyinYukleniyor = true;
+    try {
+      const v = await api.beyinVeri();
+      if (!v || v.hata) return;
+      beyinVeri = v;
+      beyin3d.veriKoy(v, depo.sirket.beyin.ad);
+      beyinHudCiz();
+      beyinYanCiz();
+    } finally {
+      beyinYukleniyor = false;
+    }
+  }
+
+  function beyinHudCiz() {
+    const tt = depo.t;
+    const v = beyinVeri;
+    if (!v) return;
+    const not = v.notlar.length;
+    const ani = v.katlar.reduce((n, k) => n + k.anilar.length, 0);
     doldur(
-      binaPanel,
-      h('header', { class: 'binaBas' }, h('h2', null, tt('bina.baslik', { x: depo.sirket.ad })), h('p', null, tt('bina.aciklama', { x: muhatap() }))),
-      katlar.length
-        ? h(
-            'ol',
-            { class: 'binaListe' },
-            [...katlar].reverse().map((p) => {
-              const no = katlar.indexOf(p) + 1;
-              const o = depo.oturumlar[p.id] || {};
-              return h(
-                'li',
-                { class: 'binaKat' + (o.acik ? ' acik' : '') },
-                h('span', { class: 'katNo buyuk' }, String(no)),
-                h('div', { class: 'binaAd' }, h('b', null, p.ad), h('span', null, p.aciklama || p.klasor)),
-                h('div', { class: 'binaEkip' }, h('b', null, p.sef.ad), h('span', null, tt('bina.ekip', { x: p.ajanlar.length }))),
-                h('span', { class: 'binaDurum' }, o.acik ? h('span', { class: 'katNokta' }) : null, tt(o.acik ? 'kat.calisiyor' : 'bina.kapali')),
-                o.bekleyen ? h('span', { class: 'katBekleyen', title: tt('kat.bekleyen', { x: o.bekleyen }) }, String(o.bekleyen)) : h('span'),
-                h('button', { type: 'button', class: 'dugme', onclick: () => kataGit(p.id) }, tt('bina.git'))
-              );
-            })
-          )
-        : h('div', { class: 'binaBos' }, h('p', null, tt('bina.bos', { x: muhatap() })), h('button', { type: 'button', class: 'dugme', onclick: () => katKurAc() }, ikon('arti', 14), tt('kat.kur')))
+      beyinHud,
+      h(
+        'div',
+        { class: 'beyinSeviye' },
+        h('div', { class: 'beyinRozet' }, h('span', null, tt('beyin.sv')), h('b', null, String(v.seviye))),
+        h(
+          'div',
+          null,
+          h('div', { class: 'beyinAdSatir' }, h('b', null, depo.sirket.beyin.ad), h('span', { class: 'beyinRuh', 'data-r': ruhSimdi || 'odakli' }, h('i'), h('span', null, tt('beyin.ruh.' + (ruhSimdi || 'odakli'))))),
+          h('div', { class: 'beyinXp' }, h('div', { style: `width:${Math.round((v.xp / v.sinir) * 100)}%` })),
+          h('small', null, tt('beyin.xp', { x: v.xp.toLocaleString(depo.sirket.dil), y: v.sinir.toLocaleString(depo.sirket.dil) }))
+        )
+      ),
+      h('div', { class: 'beyinSayilar' }, h('div', null, h('b', null, String(ani)), h('span', null, tt('beyin.ani'))), h('div', null, h('b', null, String(not)), h('span', null, tt('beyin.notSayi'))), h('div', null, h('b', null, String(v.katlar.length)), h('span', null, tt('beyin.lob'))))
     );
+    doldur(
+      beyinAraclar,
+      h('button', { type: 'button', class: 'dugme kucuk' + (beyin3d.kontrol.autoRotate ? ' secili' : ''), onclick: (e) => (beyin3d.dondur(!beyin3d.kontrol.autoRotate), e.currentTarget.classList.toggle('secili', beyin3d.kontrol.autoRotate)) }, tt('beyin.dondur')),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'dugme kucuk' + (beyinPanelAcik ? ' secili' : ''),
+          onclick: () => {
+            beyinPanelAcik = !beyinPanelAcik;
+            try {
+              localStorage.setItem('beyin.panel', beyinPanelAcik ? '1' : '0');
+            } catch {
+              /* depolama kapalı */
+            }
+            beyinGovde.classList.toggle('panelKapali', !beyinPanelAcik);
+            beyinHudCiz();
+          },
+        },
+        ikon('klasor', 13),
+        tt('beyin.klasorler')
+      )
+    );
+  }
+
+  const OLAY_IKON = { istek: '💬', arac: '⚙️', bitti: '✅', ekip: '👥', onay: '✋', hata: '❌', ani: '✨', ara: '🔎' };
+  const OLAY_XP = { bitti: 25, ani: 40, istek: 10 };
+  function beyinAkisEkle(e) {
+    const tt = depo.t;
+    const kat = depo.sirket.projeler.find((p) => p.id === e.katId);
+    const ad = e.katId === 'beyin' || !kat ? depo.sirket.beyin.ad : kat.ad;
+    const lob = beyin3d.loblar.find((l) => l.id === (kat ? kat.id : 'beyin'));
+    const ek = e.metin || (e.arac ? e.arac : '');
+    const xp = OLAY_XP[e.tur] || 0;
+    const li = h('li', { class: 'beyinOlay', style: `--r:${lob ? lob.renk : '#17b8a6'}` }, h('span', null, OLAY_IKON[e.tur] || '•'), h('span', null, tt('beyin.olay.' + e.tur, { x: ad }), ek ? h('em', null, ' · ' + String(ek).slice(0, 60)) : null), xp ? h('span', { class: 'beyinXpArti' }, '+' + xp + ' XP') : null);
+    beyinAkis.prepend(li);
+    while (beyinAkis.children.length > 4) beyinAkis.lastChild.remove();
+    [...beyinAkis.children].forEach((c, i) => (c.style.opacity = String(1 - i * 0.22)));
+    if (xp && beyinVeri) {
+      beyinVeri.xp += xp;
+      if (beyinVeri.xp >= beyinVeri.sinir) {
+        beyinVeri.xp -= beyinVeri.sinir;
+        beyinVeri.seviye++;
+        beyinVeri.sinir = Math.round(beyinVeri.sinir * 1.18);
+        bildir(tt('beyin.seviyeAtladi', { x: depo.sirket.beyin.ad, y: beyinVeri.seviye }));
+      }
+      beyinHudCiz();
+    }
+  }
+
+  // sağ panel: Obsidian benzeri klasör ağacı ve not önizlemesi
+  function beyinYanCiz() {
+    const tt = depo.t;
+    const v = beyinVeri;
+    if (!v) return;
+    const q = notAra.toLocaleLowerCase(depo.sirket.dil);
+    const notlar = q ? v.notlar.filter((n) => n.baslik.toLocaleLowerCase(depo.sirket.dil).includes(q) || n.ozet.toLocaleLowerCase(depo.sirket.dil).includes(q)) : v.notlar;
+    const gruplar = new Map();
+    for (const n of notlar) {
+      const k = n.klasor || '';
+      if (!gruplar.has(k)) gruplar.set(k, []);
+      gruplar.get(k).push(n);
+    }
+    const ara = h('input', { type: 'search', class: 'beyinAra', value: notAra, placeholder: tt('beyin.ara'), oninput: () => ((notAra = ara.value), beyinYanCiz(), document.querySelector('.beyinAra')?.focus()) });
+    doldur(
+      beyinYan,
+      h('div', { class: 'beyinYanBas' }, h('b', null, tt('beyin.klasor')), h('button', { type: 'button', class: 'simge kucuk', title: tt('beyin.klasorAc'), onclick: () => api.beyinKlasorAc() }, ikon('disari', 14)), ara),
+      h(
+        'div',
+        { class: 'beyinAgac' },
+        notlar.length
+          ? [...gruplar.entries()]
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([k, liste]) => [
+                h('div', { class: 'beyinDal' }, ikon('klasor', 13), h('span', null, k || tt('beyin.kok')), h('small', null, String(liste.length))),
+                liste.slice(0, 60).map((n) => h('button', { type: 'button', class: 'beyinDal alt' + (seciliNot && seciliNot.id === n.id ? ' secili' : ''), onclick: () => notAc(n.id) }, h('span', null, n.baslik))),
+              ])
+          : h('p', { class: 'beyinBos' }, tt(q ? 'beyin.aramaBos' : 'beyin.notYok', { x: depo.sirket.beyin.ad }))
+      ),
+      seciliNot ? h('div', { class: 'beyinNot' }, h('h3', null, seciliNot.baslik), h('div', { class: 'beyinNotMeta' }, [seciliNot.bilgi.tur, seciliNot.bilgi.proje, seciliNot.bilgi.tarih].filter(Boolean).join(' · ')), notGovde(seciliNot.metin)) : null
+    );
+  }
+
+  // basit Markdown: başlıklar, listeler, [[bağlantılar]] tıklanabilir
+  function notGovde(metin) {
+    const kap = h('div', { class: 'beyinNotGovde' });
+    for (const satir of String(metin || '').split('\n').slice(0, 200)) {
+      if (!satir.trim()) continue;
+      if (/^#\s/.test(satir) && seciliNot && satir.slice(2).trim() === seciliNot.baslik) continue;
+      const bas = /^(#{1,3})\s+(.*)$/.exec(satir);
+      const el = bas ? h('h4') : /^\s*[-*]\s+/.test(satir) ? h('p', { class: 'madde' }) : h('p');
+      const govde = bas ? bas[2] : satir.replace(/^\s*[-*]\s+/, '');
+      let son = 0;
+      for (const m of govde.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g)) {
+        el.append(document.createTextNode(govde.slice(son, m.index)));
+        const hedef = m[1].trim();
+        el.append(h('a', { href: '#', onclick: (e) => (e.preventDefault(), notAcBaslik(hedef)) }, hedef));
+        son = m.index + m[0].length;
+      }
+      el.append(document.createTextNode(govde.slice(son)));
+      kap.append(el);
+    }
+    return kap;
+  }
+
+  async function notAc(id) {
+    const r = await api.beyinNot(id);
+    if (!r || !r.tamam) return;
+    seciliNot = r.not;
+    if (!beyinPanelAcik) {
+      beyinPanelAcik = true;
+      beyinGovde.classList.remove('panelKapali');
+    }
+    beyinYanCiz();
+  }
+  function notAcBaslik(baslik) {
+    const n = beyinVeri && beyinVeri.notlar.find((x) => x.baslik.toLocaleLowerCase(depo.sirket.dil) === baslik.toLocaleLowerCase(depo.sirket.dil));
+    if (n) notAc(n.id);
+    else bildir(depo.t('beyin.notBulunamadi', { x: baslik }), true);
+  }
+
+  function beyinPanelCiz() {
+    if (!binaPanel.contains(beyinGovde)) doldur(binaPanel, beyinGovde);
+    beyinGovde.classList.toggle('panelKapali', !beyinPanelAcik);
+    beyinKur();
+    beyin3d.goster();
+    beyinYenile();
   }
 
   // Kişisel kat: beynin odası ve her kişinin ayrı odası. Oda seçici boş katta kendiliğinden açılır.
@@ -1354,6 +1560,7 @@ export function ofisSayfasi({ git }) {
     sahne,
     goster() {
       sahne.calisiyor = true;
+      if (beyin3d && beyinMi()) beyin3d.goster();
       if (!depo.oturum.acik) {
         dockCiz();
         kaldiYukle();
@@ -1365,6 +1572,7 @@ export function ofisSayfasi({ git }) {
     },
     gizle() {
       sahne.calisiyor = false;
+      if (beyin3d) beyin3d.gizle();
     },
   };
 }

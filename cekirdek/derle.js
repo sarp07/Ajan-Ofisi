@@ -68,6 +68,8 @@ const M = {
     githubKurali: 'Dal, PR ve depo işleri için github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat ve github_depo araçlarını kullan. İş bitince kendi açtığın ve birleşen dalları sil. PR birleştirme ve depo ayarı değişikliği sahibin onayına gider; depo silme senin işin değildir.',
     surumler: 'Sürüm numaraları',
     surumKurali: 'Sürüm numarası ANA.KÜÇÜK.YAMA biçimindedir (anlamsal sürümleme). Yalnızca hata düzeltmesi: son rakam artar (1.1.0 → 1.1.1). Geriye uyumlu yeni özellik: orta rakam artar, son rakam sıfırlanır (1.1.1 → 1.2.0). Uyumu bozan büyük değişiklik: ilk rakam artar, diğerleri sıfırlanır (1.2.0 → 2.0.0). Rakamlar 9\'da devretmez, 1.0.9\'dan sonra 1.0.10 gelebilir. Mağaza uygulamalarında build numarası (iOS CFBundleVersion, Android versionCode) her yüklemede artar ve sürüm numarasından ayrıdır. Sürümü değiştirmeden önce hangi türde olduğunu ve nedenini sahibe söyle.',
+    hafizaBaslik: 'Ortak hafıza',
+    hafizaKurali: 'Şirketin kalıcı hafızası beyin klasörüdür. İşe başlamadan beyin_ara ile projeyle ilgili notlara bak. Önemli bir karar, öğrenilen bir ders ya da çözülen kalıcı bir hata olursa beyin_yaz ile tur proje ve projenin adıyla kısa bir not yaz; [[Başlık]] ile bağla. Gizli değer yazma.',
     ortamBaslik: 'Ortam değişkenleri (env)',
     ortamKurali: 'Katın env değerleri Ajan Ofisi\'nde şifreli durur ve her repo kökü ile monorepo paketine (birim) ayrı yazılır. Hangi değişkenin nerede eksik olduğunu ortam_listele ile gör. Yeni bir değişken gerektiğinde adını değersiz olarak ilgili .env.example dosyasına ekle, değerini ortam_yaz ile kaydet; .env dosyasını elle doldurma. Veritabanı için ${db}, port için ${port:ad}, başka bir birimin adresi için http://localhost:${port:api} gibi bağlar kullan. Port ya da veritabanı değişince ortam_uygula çalıştır. .env dosyalarını commit etme; gizli değerleri sohbete, rapora ya da mesaja yazma. Eksik bir anahtarın değerini bilmiyorsan uydurma, sahibe sor.',
     ortakBaslik: 'Veritabanı ve portlar',
@@ -125,6 +127,8 @@ const M = {
     githubKurali: 'For branches, pull requests and repository work use the github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat and github_depo tools. When work is done, delete the branches you opened that were merged. Merging a PR and changing repository settings go to the owner for approval; deleting a repository is never your job.',
     surumler: 'Version numbers',
     surumKurali: 'Version numbers are MAJOR.MINOR.PATCH (semantic versioning). Bug fixes only: the last number goes up (1.1.0 → 1.1.1). Backward compatible new features: the middle number goes up and the last resets (1.1.1 → 1.2.0). Big breaking changes: the first number goes up and the others reset (1.2.0 → 2.0.0). Numbers do not roll over at 9; 1.0.10 can follow 1.0.9. For store apps the build number (iOS CFBundleVersion, Android versionCode) goes up on every upload and is separate from the version. Before changing the version, tell the owner which kind it is and why.',
+    hafizaBaslik: 'Shared memory',
+    hafizaKurali: 'The company\'s permanent memory is the brain folder. Before starting, search it with beyin_ara for notes about the project. When an important decision is made, a lesson is learned or a lasting bug is solved, write a short note with beyin_yaz using tur proje and the project name; link with [[Title]]. Never write secret values.',
     ortamBaslik: 'Environment variables (env)',
     ortamKurali: 'The floor\'s env values are stored encrypted in Ajan Ofisi and written separately to each repository root and monorepo package (unit). Use ortam_listele to see which variable is missing where. When a new variable is needed, add its name without a value to the relevant .env.example and save the value with ortam_yaz; do not fill .env files by hand. Use links: ${db} for the database, ${port:name} for a port, http://localhost:${port:api} for another unit\'s address. Run ortam_uygula when a port or database changes. Never commit .env files; never write secret values in chat, reports or messages. If you do not know the value of a missing key, do not make it up; ask the owner.',
     ortakBaslik: 'Database and ports',
@@ -171,6 +175,7 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   b.push(`### ${m.skillOncelik}\n\n${m.skillOncelikKurali}`);
   b.push(`### ${m.ortakBaslik}\n\n${m.ortakKurali}`);
   b.push(`### ${m.ortamBaslik}\n\n${m.ortamKurali}`);
+  b.push(`### ${m.hafizaBaslik}\n\n${m.hafizaKurali}`);
   b.push(`### ${m.surecler}\n\n${m.surecKurali}`);
   b.push(`### ${m.surumler}\n\n${m.surumKurali}`);
   b.push(`### ${m.githubBaslik}\n\n${m.githubKurali}`);

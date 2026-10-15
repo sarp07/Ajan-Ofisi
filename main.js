@@ -40,6 +40,7 @@ import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
 import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
+import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,7 @@ let port = 0;
 let kancaAnahtari = '';
 let sunucuHata = null;
 let kayit = null;
+let beyinNotlari = null; // beynin kalıcı notları (Markdown, [[bağlantılı]])
 let oda = null;
 let guncelleyici = null;
 let guncellemePenceresi = null;
@@ -317,6 +319,19 @@ function olaydanBildir(ev, kat) {
 
 // Geliştirici aracı: AJAN_OFIS_OLAY_KAYDI bir dosya yolu ise gelen ham olaylar oraya satır satır yazılır.
 // Olaylar etiketle gelir: etiket, olayı gönderen oturumun uygulamadaki kimliğidir. Kapanmış oturumdan gelen geç olay atılır.
+// Beyin görselinin canlılığı: oturumlardan gelen olaylar beyindeki ilgili loba sinyal olarak gider
+const sonBeyinOlayi = new Map();
+function beyinOlayi(katId, ev) {
+  const tur = { UserPromptSubmit: 'istek', PreToolUse: 'arac', Stop: 'bitti', SubagentStart: 'ekip', Notification: 'onay', PostToolUseFailure: 'hata' }[ev.hook_event_name];
+  if (!tur) return;
+  const anahtar = katId + ':' + tur;
+  if (tur === 'arac' && Date.now() - (sonBeyinOlayi.get(anahtar) || 0) < 500) return;
+  sonBeyinOlayi.set(anahtar, Date.now());
+  const arac = typeof ev.tool_name === 'string' ? ev.tool_name.replace(/^mcp__[^_]+__/, '') : '';
+  gonder('beyin:olay', { katId, tur, arac });
+}
+const beyinNotOlayi = (katId) => (e) => gonder('beyin:olay', { katId: e.proje ? (depo.veri.projeler.find((p) => p.ad.toLocaleLowerCase('tr') === String(e.proje).toLocaleLowerCase('tr')) || {}).id || katId : katId, tur: e.tur, metin: e.metin });
+
 function olayGeldi(ev, etiket = '') {
   const ham = process.env.AJAN_OFIS_OLAY_KAYDI;
   if (ham) fs.appendFile(ham, JSON.stringify(ev) + '\n', () => {});
@@ -336,6 +351,7 @@ function olayGeldi(ev, etiket = '') {
   }
   ev = { ...ev, session_id: etiket };
   mesguliyetIzle(k, ev);
+  beyinOlayi(b.projeId || (b.ozel ? b.katId : 'beyin'), ev);
   const kat = katGorunum(k);
   // beynin kayıt defteri yoktur, katların defteri vardır
   if (b.projeId) {
@@ -1609,9 +1625,9 @@ function ozelMcpAraclari(anahtar) {
 
 function mcpAraclari(kapsam) {
   if (ozelCoz(kapsam)) return ozelMcpAraclari(kapsam);
-  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
+  if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...beyinNotAraclari(beyinNotlari, beyinNotOlayi('beyin')), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...beyinNotAraclari(beyinNotlari, beyinNotOlayi(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -1621,7 +1637,7 @@ const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git b
 function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -2108,6 +2124,35 @@ function ipcKur() {
   });
   h('servis:motorAc', async () => ({ tamam: await servisler.motoruAc() }));
   // ortak Postgres ve port blokları (Servisler sayfası)
+  // beyin görseli: projeler (loblar), kayıt defterinden anılar, beyin notları ve seviye
+  h('beyin:veri', () => {
+    const katlar = depo.veri.projeler.map((p) => {
+      const kayitlar = kayit ? kayit.oku(p.id, 400) : [];
+      const anilar = kayitlar.filter((k) => ['istek', 'teslim', 'sonuc'].includes(k.tur)).slice(-80).map((k) => ({ z: k.z, tur: k.tur, metin: String(k.metin || '').replace(/<\/?pasted_content[^>]*>/g, '').slice(0, 140) }));
+      return { id: p.id, ad: p.ad, tur: p.tur, anilar, toplam: kayitlar.length, teslim: kayitlar.filter((k) => k.tur === 'teslim').length };
+    });
+    const notlar = beyinNotlari ? beyinNotlari.liste().slice(0, 600) : [];
+    const toplamAni = katlar.reduce((n, k) => n + k.toplam, 0);
+    const teslim = katlar.reduce((n, k) => n + k.teslim, 0);
+    // XP: her kayıt 10, her teslim 25, her not 40. Seviye eşiği her seviyede %18 artar.
+    let xp = toplamAni * 10 + teslim * 25 + notlar.length * 40;
+    let seviye = 1;
+    let sinir = 400;
+    while (xp >= sinir && seviye < 99) {
+      xp -= sinir;
+      seviye++;
+      sinir = Math.round(sinir * 1.18);
+    }
+    return { katlar, notlar, seviye, xp, sinir, klasor: beyinNotlari ? beyinNotlari.klasor : '' };
+  });
+  h('beyin:not', (id) => {
+    try {
+      return { tamam: true, not: beyinNotlari.oku(String(id)) };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e) };
+    }
+  });
+  h('beyin:klasorAc', () => shell.openPath(beyinNotlari.klasor));
   // ortam değişkenleri (proje paneli)
   const ortamHata = (e) => ({ hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) });
   h('ortam:durum', async (id) => {
@@ -2478,6 +2523,8 @@ function protokolKur() {
     path.join(KOK, 'node_modules', '@xterm', 'xterm', 'lib', 'xterm.js'),
     path.join(KOK, 'node_modules', '@xterm', 'xterm', 'css', 'xterm.css'),
     path.join(KOK, 'node_modules', '@xterm', 'addon-fit', 'lib', 'addon-fit.js'),
+    // canlı beyin: three.js ve kullanılan eklentileri (yörünge kontrolü, parlama)
+    path.join(KOK, 'node_modules', 'three', 'build', 'three.module.js'),
   ];
   protocol.handle('ofis', async (istek) => {
     const u = new URL(istek.url);
@@ -2726,6 +2773,7 @@ if (!app.requestSingleInstanceLock()) {
     depo.yukle(app.getLocale().toLowerCase().startsWith('tr') ? 'tr' : 'en');
     skiller = new SkillDeposu(path.join(veri, 'skiller'));
     kayit = new KayitDefteri(path.join(veri, 'kayit'));
+    beyinNotlari = new BeyinNotlari(path.join(veri, 'beyin'));
     anahtarlar = new AnahtarDeposu(path.join(veri, 'anahtarlar.json'), {
       kullanilabilir: () => safeStorage.isEncryptionAvailable(),
       sifrele: (m) => safeStorage.encryptString(m),
