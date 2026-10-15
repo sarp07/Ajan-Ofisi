@@ -2289,6 +2289,42 @@ async function baglantiDene() {
   }
 }
 
+// Uygulama kendi skill ordusuyla gelir: katalogdaki önerilen skiller ilk bağlantıda arka planda kurulur.
+// Bir kez kurulan ya da kullanıcının zaten kurmuş olduğu skill "görüldü" sayılır; kullanıcı silerse geri gelmez.
+// Sonraki sürümlerde kataloğa eklenen önerilenler de böylece kendiliğinden gelir.
+let skillKurulumu = null;
+function onerilenSkilleriKur() {
+  if (skillKurulumu || SINAMA) return;
+  skillKurulumu = (async () => {
+    const kurulu = new Set(skiller.liste().map((s) => s.id));
+    const gorulen = new Set(depo.veri.skillGorulen);
+    const eksik = katalogOku().filter((k) => k.varsayilan && !k.gizli && !gorulen.has(k.id));
+    const yeni = [];
+    for (const k of eksik) {
+      if (!kurulu.has(k.id)) {
+        try {
+          gonder('skill:ilerleme', { id: k.id, durum: 'iniyor' });
+          await skiller.katalogdanKur(k.id);
+          gonder('skill:ilerleme', { id: k.id, durum: 'tamam' });
+          yeni.push(k.id);
+        } catch (e) {
+          gonder('skill:ilerleme', { id: k.id, durum: 'hata', ayrinti: String(e.message || e) });
+          gunluk('skill', 'önerilen kurulamadı', k.id, String(e.message || e));
+          continue; // ağ hatasıysa bir dahaki bağlantıda yeniden denenir
+        }
+      }
+      gorulen.add(k.id);
+    }
+    if (eksik.length) depo.guncelle({ skillGorulen: [...gorulen] });
+    if (yeni.length) {
+      skillDuyur(yeni);
+    }
+  })().finally(() => {
+    // başarısız olanlar için bir sonraki denemeye izin ver (en çok saatte bir)
+    setTimeout(() => (skillKurulumu = null), 3600000);
+  });
+}
+
 async function baglantiIzle() {
   // geliştirme aracı: AJAN_OFIS_CEVRIMDISI=1 ise bağlantı yok sayılır (oyunu denemek için)
   const simdi = process.env.AJAN_OFIS_CEVRIMDISI ? false : await baglantiDene();
@@ -2296,6 +2332,7 @@ async function baglantiIzle() {
     cevrimici = simdi;
     gonder('baglanti', { cevrimici });
   }
+  if (cevrimici) onerilenSkilleriKur();
   setTimeout(baglantiIzle, cevrimici ? 10000 : 3000);
 }
 

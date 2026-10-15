@@ -46,6 +46,8 @@ export function varsayilanSirket(dil = 'tr') {
     kurallar: BASLANGIC_KURALLARI[d].map((m) => ({ id: kimlik(), metin: m })),
     ajanlar: [],
     kapaliSkiller: [],
+    // katalogdaki önerilen skillerden kendiliğinden kurulmuş ya da görülmüş olanlar (silinen geri gelmez)
+    skillGorulen: [],
     projeler: [],
     sonProje: null,
     takimModu: true,
@@ -324,6 +326,7 @@ export function normalle(ham) {
     // eski sürümden kalan, henüz bir kata taşınmamış ekip
     ajanlar: ekipHavuzu,
     kapaliSkiller: Array.isArray(s.kapaliSkiller) ? s.kapaliSkiller.filter((x) => typeof x === 'string') : [],
+    skillGorulen: Array.isArray(s.skillGorulen) ? s.skillGorulen.filter((x) => typeof x === 'string') : [],
     projeler,
     sonProje: son ? son.id : null,
     takimModu: s.takimModu !== false,

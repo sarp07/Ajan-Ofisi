@@ -2,7 +2,7 @@
 import { h, doldur, ikon, alan, anahtar } from '../dom.js';
 import { depo, api, dinle, yayinla, bildir, hataMetni } from '../depo.js';
 
-const ALAN_SIRA = ['tasarim', 'guvenlik', 'surec', 'kod', 'test', 'skill'];
+const ALAN_SIRA = ['tasarim', 'yazi', 'seo', 'guvenlik', 'surec', 'kod', 'test', 'mobil', 'video', 'skill'];
 
 export function skillerSayfasi() {
   const kok = h('div', { class: 'sayfa skillSayfa' });
@@ -241,6 +241,11 @@ export function skillerSayfasi() {
   katman.addEventListener('click', () => (katman.hidden = true));
   api.skillIlerleme((v) => {
     if (v.durum === 'iniyor') ilerleme.set(v.id, 'iniyor');
+    else if (ilerleme.get(v.id) === 'iniyor') {
+      // arka planda kurulan önerilen skiller: liste kendiliğinden yenilenir
+      ilerleme.delete(v.id);
+      api.skillListe().then((l) => Array.isArray(l) && skillKoy(l));
+    }
   });
   dinle('skiller', ciz);
   dinle('sirket', ciz);
