@@ -47,6 +47,6 @@ export class AnahtarDeposu {
   }
 
   durum() {
-    return { claude: this.var('claude'), codex: this.var('codex'), elevenlabs: this.var('elevenlabs') };
+    return { claude: this.var('claude'), codex: this.var('codex'), kimi: this.var('kimi'), gemini: this.var('gemini'), elevenlabs: this.var('elevenlabs') };
   }
 }

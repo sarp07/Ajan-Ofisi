@@ -16,7 +16,7 @@ export function ayarlarSayfasi({ git } = {}) {
   // motorlar yeniden taranırken kartlar "aranıyor" gösterir
   let taraniyor = false;
   // yazılmakta olan anahtar yeniden çizimde kaybolmasın
-  const anahtarTaslak = { claude: '', codex: '', elevenlabs: '' };
+  const anahtarTaslak = { claude: '', codex: '', kimi: '', gemini: '', elevenlabs: '' };
   // beynin ses listesi: türe göre bir kez yüklenir
   const sesler = { tur: null, liste: [], hata: '' };
   async function sesleriYukle(tur) {
@@ -283,7 +283,8 @@ export function ayarlarSayfasi({ git } = {}) {
             },
             t(g.girisli ? 'motor.hesapDegistir' : 'motor.girisYap')
           )
-        )
+        ),
+        motor === 'kimi' || motor === 'gemini' ? h('p', { class: 'alanIpucu' }, t('motor.girisNot.' + motor)) : null
       );
     } else {
       const kayitli = !!(mb.anahtarVar || {})[motor];
@@ -291,7 +292,7 @@ export function ayarlarSayfasi({ git } = {}) {
         type: 'password',
         autocomplete: 'off',
         spellcheck: 'false',
-        placeholder: kayitli ? t('motor.anahtarKayitli') : motor === 'claude' ? 'sk-ant-…' : 'sk-…',
+        placeholder: kayitli ? t('motor.anahtarKayitli') : { claude: 'sk-ant-…', gemini: 'AIza…' }[motor] || 'sk-…',
         value: anahtarTaslak[motor],
         oninput: () => (anahtarTaslak[motor] = giris.value),
       });
@@ -314,6 +315,11 @@ export function ayarlarSayfasi({ git } = {}) {
       );
     }
 
+    // Kimi ve Gemini modeli aracın kendi ayarından (ya da hesabın varsayılanından) gelir
+    if (motor === 'kimi' || motor === 'gemini') {
+      parcalar.push(h('p', { class: 'alanIpucu' }, t('motor.modelNot.' + motor)));
+      return h('div', { class: 'motorKart' }, parcalar);
+    }
     // model düzeni: şef güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar
     const modeller = s.modeller[motor];
     const modelSec = (kat) => {
@@ -496,6 +502,8 @@ export function ayarlarSayfasi({ git } = {}) {
                 ['otomatik', t('motor.otomatik')],
                 ['claude', t('motor.claude')],
                 ['codex', t('motor.codex')],
+                ['kimi', t('motor.kimi')],
+                ['gemini', t('motor.gemini')],
               ],
               s.motor,
               (v) => api.sirketGuncelle({ motor: v })
@@ -503,7 +511,7 @@ export function ayarlarSayfasi({ git } = {}) {
             h('span', { class: 'alanIpucu' }, t('motor.secimIpucu'))
           ),
           h('p', { class: 'durumSatir ' + (mb.hazir ? 'iyi' : 'kotu') }, ikon(mb.hazir ? 'tik' : 'ucgen', 16), t(mb.hazir ? 'motor.hazir' : 'motor.hazirDegil', { x: secilenAd })),
-          h('div', { class: 'motorIzgara' + (taraniyor ? ' taraniyor' : '') }, motorKarti('claude'), motorKarti('codex')),
+          h('div', { class: 'motorIzgara' + (taraniyor ? ' taraniyor' : '') }, motorKarti('claude'), motorKarti('codex'), motorKarti('kimi'), motorKarti('gemini')),
           h(
             'div',
             { class: 'satirDugme' },

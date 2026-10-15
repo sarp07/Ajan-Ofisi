@@ -382,7 +382,7 @@ export function ofisSayfasi({ git }) {
     const motor = depo.oturum.acik && depo.oturum.motor ? depo.oturum.motor : mb.secilen;
     if (!motor) return null;
     const s = depo.sirket;
-    const model = motor === 'claude' ? s.sef.model || s.modeller.claude.koordinator : s.sef.codexModel || s.modeller.codex.koordinator || (mb.codexVarsayilan || {}).koordinator || '';
+    const model = motor === 'claude' ? s.sef.model || s.modeller.claude.koordinator : motor === 'codex' ? s.sef.codexModel || s.modeller.codex.koordinator || (mb.codexVarsayilan || {}).koordinator || '' : '';
     const eksik = !depo.oturum.acik && !mb.hazir;
     return h(
       'button',
@@ -467,6 +467,10 @@ export function ofisSayfasi({ git }) {
         komutSatiri(komutlar.claude || ''),
         h('p', { class: 'ipucu' }, tt('motor.codex')),
         komutSatiri(komutlar.codex || ''),
+        h('p', { class: 'ipucu' }, tt('motor.kimi')),
+        komutSatiri(komutlar.kimi || ''),
+        h('p', { class: 'ipucu' }, tt('motor.gemini')),
+        komutSatiri(komutlar.gemini || ''),
         h(
           'div',
           { class: 'satirDugme' },

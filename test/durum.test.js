@@ -557,5 +557,30 @@ assert.equal(onayKomutu('onay 12345'), null);
 }
 
 assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<pasted_content id="5e41">[Mahmut] Atlas, iş</pasted_content>' }).metin, '[Mahmut] Atlas, iş', 'yapıştırma sarmalı deftere girmez');
+// ek motorlar: Gemini olayları Claude biçimine çevrilir, Kimi ve Gemini oturum evleri kurulur
+{
+  const { geminiUyarla, ekArgumanlari, ekDerle, KIMI_OLAYLAR } = await import('../cekirdek/ek-motorlar.js');
+  assert.equal(geminiUyarla({ hook_event_name: 'BeforeAgent', prompt: 'merhaba' }).hook_event_name, 'UserPromptSubmit');
+  assert.equal(geminiUyarla({ hook_event_name: 'AfterAgent', prompt_response: 'bitti' }).last_assistant_message, 'bitti');
+  const arac = geminiUyarla({ hook_event_name: 'BeforeTool', tool_name: 'run_shell_command', tool_input: { command: 'ls' } });
+  assert.deepEqual([arac.hook_event_name, arac.tool_name, arac.tool_input.command], ['PreToolUse', 'Bash', 'ls']);
+  assert.equal(geminiUyarla({ hook_event_name: 'BeforeTool', tool_name: 'mcp_ofis_ortam_listele' }).tool_name, 'mcp__ofis__ortam_listele');
+  assert.deepEqual(ekArgumanlari('kimi', { izinModu: 'auto' }, { surdur: 'session_x', ekKlasorler: ['/a'] }), ['--session', 'session_x', '--yolo', '--add-dir', '/a']);
+  assert.deepEqual(ekArgumanlari('gemini', { izinModu: 'acceptEdits' }, { ekKlasorler: ['/a', '/b'] }), ['--approval-mode', 'auto_edit', '--include-directories', '/a,/b']);
+  const evKlasor = path.join(tmp, 'ek-ev');
+  const sir = normalle({ dil: 'tr', ajanlar: [{ id: 'kaan', ad: 'Kaan', unvan: 'Backend' }] });
+  const ki = ekDerle('kimi', sir, { hedef: evKlasor, port: 4000, anahtar: 'a', etiket: 'e', mcpAdres: 'http://127.0.0.1:4000/mcp/a/kat' });
+  const toml = fs.readFileSync(path.join(ki.ev, 'config.toml'), 'utf8');
+  assert.equal((toml.match(/\[\[hooks\]\]/g) || []).length, KIMI_OLAYLAR.length, 'her olay için kanca');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(ki.ev, 'mcp.json'), 'utf8')).mcpServers.ofis.url, 'http://127.0.0.1:4000/mcp/a/kat');
+  assert.ok(fs.existsSync(path.join(ki.ev, 'agents', 'kaan.md')) && fs.existsSync(ki.sefDosya));
+  assert.equal(ki.env.KIMI_CODE_HOME, ki.ev);
+  const ge = ekDerle('gemini', sir, { hedef: evKlasor, port: 4000, anahtar: 'a', etiket: 'e', mcpAdres: 'http://x/mcp', apiModu: true });
+  const ayar = JSON.parse(fs.readFileSync(path.join(ge.ev, '.gemini', 'settings.json'), 'utf8'));
+  assert.equal(ayar.security.auth.selectedType, 'gemini-api-key');
+  assert.equal(ayar.mcpServers.ofis.httpUrl, 'http://x/mcp');
+  assert.ok(ayar.hooks.BeforeAgent && ayar.hooks.AfterAgent && ayar.hooks.BeforeTool);
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

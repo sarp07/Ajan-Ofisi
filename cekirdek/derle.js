@@ -84,6 +84,8 @@ const M = {
     ekipAciklamaCodex: 'Şirkette seninle birlikte çalışanlar. İşini bitirince son mesajında ne yaptığını ve neyin kaldığını kısaca yaz, sonucu şef toplar.',
     ekipCagriCodex: 'Ekip üyesi çağırırken spawn_agent aracında agent_type olarak tam şu adı kullan. Her üyeye işi tek mesajda, gereken bütün bilgiyle ver ve sonuçlarını bekleyip topla:',
     skillAciklamaCodex: 'Şu skiller sana atandı. İlgili işte önce skilin SKILL.md dosyasını oku ve oradaki adımları uygula, sonra kendi bilginle devam et:',
+    ekipCagriEk: 'Ekip üyesini alt ajan (sub-agent) olarak çağır; alt ajan adı olarak tam şu adı kullan. Her üyeye işi tek mesajda, gereken bütün bilgiyle ver ve sonuçlarını bekleyip topla:',
+    altAjan: 'alt ajan',
     gorevSefCodex: 'İşi dağıtırken planını güncel tut. Ekipten gelen her sonucu kontrol et, eksik varsa aynı üyeye geri gönder.',
   },
   en: {
@@ -143,6 +145,8 @@ const M = {
     ekipAciklamaCodex: 'The people who work with you in this company. When you finish, end with a short note on what you did and what is left. The chief collects the results.',
     ekipCagriCodex: 'When you call a team member, pass exactly this name as agent_type to the spawn_agent tool. Give each member the whole job in one message with everything they need, then wait for and collect the results:',
     skillAciklamaCodex: 'These skills are assigned to you. For matching work first read the skill SKILL.md file and follow its steps, then continue with your own knowledge:',
+    ekipCagriEk: 'Call a team member as a sub-agent, using exactly this name as the sub-agent name. Give each member the whole job in one message with everything they need, then wait for and collect the results:',
+    altAjan: 'sub-agent',
     gorevSefCodex: 'Keep your plan up to date while you hand out work. Check every result from the team and send it back to the same member if something is missing.',
   },
 };
@@ -192,7 +196,8 @@ function liste(maddeler) {
 // Ekip üyesinin talimat gövdesi. motor: 'claude' ya da 'codex'. skillKlasoru: Codex'te skillerin derlendiği klasör.
 export function ajanGovde(sirket, ajan, skillBilgi = {}, proje = null, { motor = 'claude', skillKlasoru = '' } = {}) {
   const m = M[sirket.dil] || M.tr;
-  const codex = motor === 'codex';
+  // Claude dışındaki motorlar (Codex, Kimi, Gemini) skilleri dosya yoluyla okur
+  const codex = motor !== 'claude';
   const bolum = [];
   bolum.push(m.kimlik(ajan.ad, ajan.unvan, sirket.ad) + (ajan.alanlar.length ? ` ${m.alanlar}: ${ajan.alanlar.join(', ')}.` : ''));
   if ((ajan.talimat || '').trim()) bolum.push(ajan.talimat.trim());
@@ -266,16 +271,19 @@ export function ozelMetni(sirket, ajan, { klasor = '', calisma = false } = {}) {
 export function sefMetni(sirket, { proje = null, devir = '', motor = 'claude' } = {}) {
   const m = M[sirket.dil] || M.tr;
   const codex = motor === 'codex';
+  const ek = motor === 'kimi' || motor === 'gemini';
   const bolum = [];
   bolum.push(`# ${sirket.ad}`);
   bolum.push(m.kimlik(sirket.sef.ad, sirket.sef.unvan, sirket.ad));
   bolum.push((sirket.sef.talimat || '').trim());
   if (sirket.ajanlar.length) {
     const satir = (a) =>
-      codex
+      ek
+        ? `${a.ad} (${m.altAjan}: ${a.id})${a.unvan ? '. ' + a.unvan : ''}${a.alanlar.length ? '. ' + m.alan + ': ' + a.alanlar.join(', ') : ''}.${a.cagri ? ' ' + m.kullan + ': ' + a.cagri : ''}`
+        : codex
         ? `${a.ad} (agent_type: ${a.id})${a.unvan ? '. ' + a.unvan : ''}${a.alanlar.length ? '. ' + m.alan + ': ' + a.alanlar.join(', ') : ''}.${a.cagri ? ' ' + m.kullan + ': ' + a.cagri : ''}`
         : `${a.ad} (${m.tur}: ${EKLENTI_ADI}:${a.id}, ${m.isim}: ${a.id})${a.unvan ? '. ' + a.unvan : ''}${a.alanlar.length ? '. ' + m.alan + ': ' + a.alanlar.join(', ') : ''}.${a.cagri ? ' ' + m.kullan + ': ' + a.cagri : ''}`;
-    bolum.push(`## ${m.ekibin}\n\n${codex ? m.ekipCagriCodex : m.ekipCagri}\n\n${liste(sirket.ajanlar.map(satir))}\n\n${codex ? m.gorevSefCodex : m.gorevSef}\n\n${m.yardimciKurali}`);
+    bolum.push(`## ${m.ekibin}\n\n${ek ? m.ekipCagriEk : codex ? m.ekipCagriCodex : m.ekipCagri}\n\n${liste(sirket.ajanlar.map(satir))}\n\n${codex || ek ? m.gorevSefCodex : m.gorevSef}\n\n${m.yardimciKurali}`);
   } else {
     bolum.push(`## ${m.ekibin}\n\n${m.ekipYok}`);
   }
@@ -286,7 +294,7 @@ export function sefMetni(sirket, { proje = null, devir = '', motor = 'claude' } 
   return bolum.filter(Boolean).join('\n\n') + '\n';
 }
 
-function temizle(klasor) {
+export function temizle(klasor) {
   fs.rmSync(klasor, { recursive: true, force: true });
   fs.mkdirSync(klasor, { recursive: true });
 }
@@ -311,7 +319,7 @@ function skillYolDuzelt(klasor, id) {
   gez(klasor, 0);
 }
 
-function skillKopyala(skiller, klasor, { claudeYolu = false } = {}) {
+export function skillKopyala(skiller, klasor, { claudeYolu = false } = {}) {
   fs.mkdirSync(klasor, { recursive: true });
   for (const s of skiller) {
     const varis = path.join(klasor, s.id);

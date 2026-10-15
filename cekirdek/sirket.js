@@ -11,7 +11,10 @@ export const BEYIN_VARSAYILAN_AD = { tr: 'Beyin', en: 'Brain' };
 const MODELLER = ['', 'sonnet', 'opus', 'haiku', 'fable'];
 // bypassPermissions: hiçbir şey sorulmaz. Sahip Ayarlar'da uyarıyı görerek seçer.
 const IZIN_MODLARI = ['', 'acceptEdits', 'auto', 'plan', 'bypassPermissions'];
-const MOTOR_SECIMLERI = ['otomatik', 'claude', 'codex'];
+const MOTOR_LISTESI = ['claude', 'codex', 'kimi', 'gemini'];
+const MOTOR_SECIMLERI = ['otomatik', ...MOTOR_LISTESI];
+// oturum kimliği: Claude ve Codex UUID, Kimi ve Gemini kendi biçimi
+const OTURUM_KIMLIGI = /^[A-Za-z0-9_-](6, 80)$/;
 const GIRIS_YONTEMLERI = ['abonelik', 'api'];
 // Model düzeni: şef (koordinatör) güçlü modelle yönetir, çalışanlar daha az harcayan modelle iş yapar.
 // Çalışanın ya da şefin kendi model seçimi boşsa buradaki değer kullanılır.
@@ -68,10 +71,12 @@ export function varsayilanSirket(dil = 'tr') {
     motor: 'otomatik',
     // özel sohbetlerin son oturumu: "kat:ajan" -> { oturum, motor }. Sürdürmek için.
     ozelOturumlar: {},
-    giris: { claude: 'abonelik', codex: 'abonelik' },
+    giris: { claude: 'abonelik', codex: 'abonelik', kimi: 'abonelik', gemini: 'abonelik' },
     modeller: { claude: { ...VARSAYILAN_MODELLER.claude }, codex: { ...VARSAYILAN_MODELLER.codex } },
     claudeYolu: '',
     codexYolu: '',
+    kimiYolu: '',
+    geminiYolu: '',
     // yeni katların açılacağı klasör (boşsa uygulama seçer: ~/GitHub varsa orası, yoksa ~/Ajan Ofisi Projeler)
     projeKoku: '',
     otomatikGuncelleme: true,
@@ -102,7 +107,7 @@ function ozelNormalle(o) {
   if (!o || typeof o !== 'object') return sonuc;
   for (const [k, v] of Object.entries(o).slice(0, 200)) {
     if (!/^[a-z0-9]{6,20}:[a-z0-9][a-z0-9-]{0,39}$/.test(k) || !v || typeof v !== 'object') continue;
-    if (typeof v.oturum === 'string' && /^[0-9a-f-]{36}$/.test(v.oturum)) sonuc[k] = { oturum: v.oturum, motor: v.motor === 'codex' ? 'codex' : 'claude' };
+    if (typeof v.oturum === 'string' && OTURUM_KIMLIGI.test(v.oturum)) sonuc[k] = { oturum: v.oturum, motor: MOTOR_LISTESI.includes(v.motor) ? v.motor : 'claude' };
   }
   return sonuc;
 }
@@ -110,7 +115,7 @@ function ozelNormalle(o) {
 function girisNormalle(g) {
   const o = g && typeof g === 'object' ? g : {};
   const sec = (v) => (GIRIS_YONTEMLERI.includes(v) ? v : 'abonelik');
-  return { claude: sec(o.claude), codex: sec(o.codex) };
+  return Object.fromEntries(MOTOR_LISTESI.map((m) => [m, sec(o[m])]));
 }
 
 function alanNormalle(v) {
@@ -284,9 +289,9 @@ function projeNormalle(p, kimlikler, sefSablon) {
     notlar: metin(ham.notlar, 4000),
     olusturma: Number.isFinite(ham.olusturma) ? ham.olusturma : Date.now(),
     sonAcilis: Number.isFinite(ham.sonAcilis) ? ham.sonAcilis : 0,
-    sonOturum: typeof ham.sonOturum === 'string' && /^[0-9a-f-]{36}$/.test(ham.sonOturum) ? ham.sonOturum : '',
+    sonOturum: typeof ham.sonOturum === 'string' && OTURUM_KIMLIGI.test(ham.sonOturum) ? ham.sonOturum : '',
     // son oturumu hangi motor açtı: başka motorla sürdürülemez
-    sonMotor: ham.sonMotor === 'codex' ? 'codex' : 'claude',
+    sonMotor: MOTOR_LISTESI.includes(ham.sonMotor) ? ham.sonMotor : 'claude',
     // kişisel kat: şefi yoktur (şefi beyindir), her üyenin ayrı odası vardır ve onlarla yalnızca özel sohbet edilir
     tur: ham.tur === 'kisisel' ? 'kisisel' : 'proje',
     // kat: bu projenin şefi ve ekibi. Ekipler projeye özeldir.
@@ -365,6 +370,8 @@ export function normalle(ham) {
     modeller: modellerNormalle(s.modeller),
     claudeYolu: metin(s.claudeYolu, 1000),
     codexYolu: metin(s.codexYolu, 1000),
+    kimiYolu: metin(s.kimiYolu, 1000),
+    geminiYolu: metin(s.geminiYolu, 1000),
     otomatikGuncelleme: s.otomatikGuncelleme !== false,
     tarayiciOnaysiz: s.tarayiciGecisi !== 1 ? true : !!s.tarayiciOnaysiz,
     tarayiciGecisi: 1,

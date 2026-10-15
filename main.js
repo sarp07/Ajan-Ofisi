@@ -41,6 +41,7 @@ import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cek
 import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
 import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
+import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla } from './cekirdek/ek-motorlar.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -55,7 +56,11 @@ let skiller = null;
 let ortam = null;
 let claude = null;
 let codex = null;
-const girisler = { claude: null, codex: null };
+const girisler = { claude: null, codex: null, kimi: null, gemini: null };
+const ekler = { kimi: null, gemini: null }; // Kimi Code ve Gemini CLI
+// motorun aracı (yol ve sürüm) ya da null
+const aracAl = (motor) => (motor === 'claude' ? claude : motor === 'codex' ? codex : ekler[motor] || null);
+const motorYokHatasi = (secim) => (secim === 'otomatik' ? 'motorYok' : secim + 'Yok');
 let codexListe = [];
 const github = { yol: null, git: null, durum: { girisli: false } };
 let anahtarlar = null;
@@ -176,10 +181,70 @@ function oturumBitti(k, kod, bilgi) {
     } catch {
       /* proje silinmiş olabilir */
     }
+    gunlugeYaz(bilgi.projeId, bilgi.baslangic);
   }
   durumGonder(k, true);
   gonder('pty:cikis', { kat: k.anahtar, kod });
   oturumlariYayinla();
+}
+
+// ---------- beynin kendiliğinden dolan hafızası ----------
+// Notlar yalnızca beynin yazmasına bağlı kalmaz: projeler, kişiler ve sahip için not açılır, her kat oturumunun özeti
+// projenin günlüğüne eklenir. Var olan not ezilmez.
+function hafizaTohumla() {
+  if (!beyinNotlari || !depo) return;
+  try {
+    const tr = depo.veri.dil !== 'en';
+    const basliklar = new Set(beyinNotlari.liste().map((n) => n.baslik.toLocaleLowerCase('tr')));
+    const yoksa = (baslik, fn) => {
+      if (basliklar.has(baslik.toLocaleLowerCase('tr'))) return;
+      fn();
+      basliklar.add(baslik.toLocaleLowerCase('tr'));
+    };
+    const sahip = depo.veri.beyin.sahip;
+    if (sahip) yoksa(sahip, () => beyinNotlari.yaz({ baslik: sahip, tur: 'kisi', metin: tr ? `Şirketin sahibi. Beyin: [[${depo.veri.beyin.ad}]].` : `Owner of the company. Brain: [[${depo.veri.beyin.ad}]].` }));
+    for (const p of depo.veri.projeler) {
+      const satir = [];
+      if (p.aciklama) satir.push(p.aciklama);
+      if (p.tur === 'kisisel') satir.push(tr ? 'Sahibin kişisel katı: özel odalar.' : 'The owner\'s personal floor: private rooms.');
+      else {
+        satir.push(`${tr ? 'Klasör' : 'Folder'}: \`${p.klasor}\``);
+        if ((p.depolar || []).length) satir.push(`${tr ? 'Depolar' : 'Repositories'}: ${p.depolar.map((d) => d.ad).join(', ')}`);
+        if (p.alanAdlari.length) satir.push(`${tr ? 'Alan adları' : 'Domains'}: ${p.alanAdlari.join(', ')}`);
+        if (p.hesaplar.length) satir.push(`${tr ? 'Hesaplar' : 'Accounts'}: ${p.hesaplar.map((h) => h.platform + ' ' + h.ad).join(', ')}`);
+        satir.push(`${tr ? 'Şef' : 'Chief'}: [[${p.sef.ad}]]`);
+      }
+      if (p.ajanlar.length) satir.push(`${tr ? 'Ekip' : 'Team'}: ${p.ajanlar.map((a) => `[[${a.ad}]] (${a.unvan})`).join(', ')}`);
+      yoksa(p.ad, () => beyinNotlari.yaz({ baslik: p.ad, tur: 'proje', proje: p.ad, metin: satir.join('\n\n') }));
+      for (const k of p.kisiler || []) yoksa(k.ad, () => beyinNotlari.yaz({ baslik: k.ad, tur: 'kisi', proje: p.ad, metin: `${k.rol ? k.rol + '. ' : ''}${tr ? 'Kanal' : 'Channel'}: ${k.kanal}. [[${p.ad}]]` }));
+      // geçmiş: kayıt defterindeki son durum günlüğe bir kez yazılır
+      const gunlukAd = (tr ? 'Günlük · ' : 'Log · ') + p.ad;
+      if (p.tur !== 'kisisel' && kayit) {
+        const ozet = devirOzeti(kayit.oku(p.id), depo.veri.dil);
+        if (ozet) yoksa(gunlukAd, () => beyinNotlari.yaz({ baslik: gunlukAd, tur: 'proje', proje: p.ad, metin: ozet }));
+      }
+    }
+    gonder('beyin:olay', { katId: 'beyin', tur: 'ani' });
+  } catch (e) {
+    gunluk('hafıza tohumlanamadı', String(e.message || e));
+  }
+}
+
+function gunlugeYaz(projeId, baslangic = 0) {
+  if (!beyinNotlari || !kayit) return;
+  try {
+    const p = depo.proje(projeId);
+    if (!p) return;
+    const yeni = kayit.oku(p.id).filter((x) => !baslangic || x.z >= baslangic);
+    if (!yeni.some((x) => ['istek', 'teslim', 'sonuc'].includes(x.tur))) return;
+    const ozet = devirOzeti(yeni, depo.veri.dil);
+    if (!ozet) return;
+    const tr = depo.veri.dil !== 'en';
+    beyinNotlari.yaz({ baslik: (tr ? 'Günlük · ' : 'Log · ') + p.ad, tur: 'proje', proje: p.ad, metin: ozet, ekle: true });
+    gonder('beyin:olay', { katId: p.id, tur: 'ani' });
+  } catch (e) {
+    gunluk('günlük yazılamadı', String(e.message || e));
+  }
 }
 
 // Yeni skill eklenince ya da açılınca çalışan bütün oturumlara haber verilir: oturumu yeniden başlatmadan, ilgili iş
@@ -237,7 +302,7 @@ async function claudeYenile() {
 }
 
 // ---------- motorlar ----------
-const durumlar = () => ({ claude: claude && { ...claude, giris: girisler.claude }, codex: codex && { ...codex, giris: girisler.codex } });
+const durumlar = () => Object.fromEntries(MOTORLAR.map((m) => [m, aracAl(m) && { ...aracAl(m), giris: girisler[m] }]));
 const codexApiKlasoru = () => path.join(app.getPath('userData'), 'codex-api');
 
 function codexModelCoz() {
@@ -248,11 +313,13 @@ function codexModelCoz() {
 
 function motorBilgi() {
   const d = durumlar();
-  const anahtarVar = anahtarlar ? anahtarlar.durum() : { claude: false, codex: false, elevenlabs: false };
+  const anahtarVar = anahtarlar ? anahtarlar.durum() : { claude: false, codex: false, kimi: false, gemini: false, elevenlabs: false };
   const secilen = depo ? motorCoz(depo.veri, d, anahtarVar) : null;
   return {
     claude: d.claude,
     codex: d.codex,
+    kimi: d.kimi,
+    gemini: d.gemini,
     anahtarVar,
     sifreliDepo: anahtarlar ? anahtarlar.kullanilabilir() : false,
     secilen,
@@ -268,10 +335,12 @@ async function motorlarYenile() {
   const [c, x] = await Promise.all([claudeBul(ortam, depo.veri.claudeYolu), codexBul(ortam, depo.veri.codexYolu)]);
   claude = c;
   codex = x;
+  const [ki, ge] = await Promise.all([ekBul('kimi', ortam, depo.veri.kimiYolu), ekBul('gemini', ortam, depo.veri.geminiYolu)]);
+  ekler.kimi = ki;
+  ekler.gemini = ge;
   const temiz = (motor) => motorOrtami(motor, { giris: { [motor]: 'abonelik' } }, ortam, '');
-  const [gc, gx] = await Promise.all([claude ? girisDurumu('claude', claude.yol, temiz('claude')) : null, codex ? girisDurumu('codex', codex.yol, temiz('codex')) : null]);
-  girisler.claude = gc;
-  girisler.codex = gx;
+  const sonuc = await Promise.all(MOTORLAR.map((m) => (aracAl(m) ? girisDurumu(m, aracAl(m).yol, temiz(m)) : null)));
+  MOTORLAR.forEach((m, i) => (girisler[m] = sonuc[i]));
   github.yol = ghBul(ortam);
   github.git = gitBul(ortam);
   github.durum = await ghDurum(github.yol, ortam);
@@ -339,14 +408,16 @@ function olayGeldi(ev, etiket = '') {
   const k = [...katlar.values()].find((x) => x.oturum.acik && x.oturum.bilgi && x.oturum.bilgi.oturumId === etiket);
   if (!k) return;
   const b = k.oturum.bilgi;
-  // Codex oturum kimliğini kendisi üretir: sürdürmek için ilk olaydan alınır
-  if (b.motor === 'codex' && !b.codexOturum && typeof ev.session_id === 'string' && /^[0-9a-f-]{36}$/.test(ev.session_id)) {
+  // Gemini'nin olay ve araç adları Claude biçimine çevrilir (Kimi zaten aynı adları kullanır)
+  if (b.motor === 'gemini') ev = geminiUyarla(ev);
+  // Codex, Kimi ve Gemini oturum kimliğini kendisi üretir: sürdürmek için ilk olaydan alınır
+  if (b.motor !== 'claude' && !b.codexOturum && typeof ev.session_id === 'string' && /^[A-Za-z0-9_-]{6,80}$/.test(ev.session_id)) {
     b.codexOturum = ev.session_id;
     if (b.projeId) {
-      depo.projeKaydet({ id: b.projeId, sonOturum: ev.session_id, sonMotor: 'codex' });
+      depo.projeKaydet({ id: b.projeId, sonOturum: ev.session_id, sonMotor: b.motor });
       gonder('sirket', gorunum());
     } else if (b.ozel) {
-      depo.guncelle({ ozelOturumlar: { ...depo.veri.ozelOturumlar, [`${b.katId}:${b.ajanId}`]: { oturum: ev.session_id, motor: 'codex' } } });
+      depo.guncelle({ ozelOturumlar: { ...depo.veri.ozelOturumlar, [`${b.katId}:${b.ajanId}`]: { oturum: ev.session_id, motor: b.motor } } });
     }
   }
   ev = { ...ev, session_id: etiket };
@@ -408,11 +479,11 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   projeId = String(projeId || '');
   if (katlar.get(projeId)?.oturum.acik) return { hata: 'acik' };
   if (sunucuHata) return { hata: 'sunucu', ayrinti: sunucuHata };
-  if (!claude && !codex) await motorlarYenile();
+  if (!MOTORLAR.some((m) => aracAl(m))) await motorlarYenile();
   const sirket = gorunum(String(projeId || ''));
   const motor = motorCoz(sirket, durumlar(), anahtarlar.durum());
-  if (!motor) return { hata: sirket.motor === 'otomatik' ? 'motorYok' : sirket.motor === 'codex' ? 'codexYok' : 'claudeYok' };
-  const yol = motor === 'claude' ? claude.yol : codex.yol;
+  if (!motor) return { hata: motorYokHatasi(sirket.motor) };
+  const yol = aracAl(motor).yol;
   const apiModu = sirket.giris[motor] === 'api';
   const anahtar = apiModu ? anahtarlar.al(motor) : '';
   if (apiModu && !anahtar) return { hata: 'anahtarYok' };
@@ -437,13 +508,19 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   let cikti;
   try {
     // her katın derlemesi ayrı klasörde: açık bir katın dosyaları başka katın derlemesiyle ezilmez
-    cikti = derle(sirket, { hedef: path.join(app.getPath('userData'), 'calisma', proje.id), skiller: etkin, port, anahtar: kancaAnahtari, etiket: oturumId, proje, devir, motor, codexModel: motor === 'codex' ? codexModelCoz() : null });
+    const hedefKat = path.join(app.getPath('userData'), 'calisma', proje.id);
+    cikti = EK_MOTORLAR.includes(motor)
+      ? ekDerle(motor, sirket, { hedef: hedefKat, skiller: etkin, port, anahtar: kancaAnahtari, etiket: oturumId, proje, devir, mcpAdres: mcpAdresi() + '/' + proje.id, araclar: serbestAraclar({}), apiModu })
+      : derle(sirket, { hedef: hedefKat, skiller: etkin, port, anahtar: kancaAnahtari, etiket: oturumId, proje, devir, motor, codexModel: motor === 'codex' ? codexModelCoz() : null });
   } catch (e) {
     return { hata: 'derleme', ayrinti: String(e.message || e) };
   }
   const env = motorOrtami(motor, sirket, ortam, anahtar, { codexApiKlasoru: codexApiKlasoru() });
   let arg;
-  if (motor === 'claude') {
+  if (EK_MOTORLAR.includes(motor)) {
+    Object.assign(env, cikti.env);
+    arg = ekArgumanlari(motor, sirket, { surdur: eski, ekKlasorler: [skiller.klasor, ...ekDepolar(proje)] });
+  } else if (motor === 'claude') {
     arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, ...ekDepolar(proje).flatMap((d) => ['--add-dir', d]), ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
     env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = sirket.takimModu ? '1' : '0';
   } else {
@@ -459,7 +536,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   const k = katAl(proje.id);
   k.sohbet.length = 0;
   try {
-    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, codexOturum: motor === 'codex' && eski ? eski : '', projeId: proje.id, projeAd: proje.ad, proje: klasor, surdurulen: !!eski, devirVar: !!devir, baslangic: Date.now() } });
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, codexOturum: motor !== 'claude' && eski ? eski : '', projeId: proje.id, projeAd: proje.ad, proje: klasor, surdurulen: !!eski, devirVar: !!devir, baslangic: Date.now() } });
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
@@ -492,8 +569,8 @@ function girisBaslat({ motor, sutun, satir }) {
     return { tamam: true, ...oturumBilgi(k) };
   }
   if (!MOTORLAR.includes(motor)) return { hata: 'genel' };
-  const arac = motor === 'claude' ? claude : codex;
-  if (!arac) return { hata: motor === 'claude' ? 'claudeYok' : 'codexYok' };
+  const arac = aracAl(motor);
+  if (!arac) return { hata: motor + 'Yok' };
   const env = motorOrtami(motor, { giris: { [motor]: 'abonelik' } }, ortam, '');
   try {
     k.oturum.baslat({ yol: arac.yol, arg: girisKomutu(motor), cwd: app.getPath('home'), env, sutun, satir, bilgi: { giris: true, motor, baslangic: Date.now() } });
@@ -512,11 +589,11 @@ async function beyinBaslat({ sutun, satir }) {
   const k = katAl('beyin');
   if (k.oturum.acik) return { hata: 'acik' };
   if (sunucuHata) return { hata: 'sunucu', ayrinti: sunucuHata };
-  if (!claude && !codex) await motorlarYenile();
+  if (!MOTORLAR.some((m) => aracAl(m))) await motorlarYenile();
   const sirket = beyinGorunumu();
   const motor = motorCoz(sirket, durumlar(), anahtarlar.durum());
-  if (!motor) return { hata: sirket.motor === 'otomatik' ? 'motorYok' : sirket.motor === 'codex' ? 'codexYok' : 'claudeYok' };
-  const yol = motor === 'claude' ? claude.yol : codex.yol;
+  if (!motor) return { hata: motorYokHatasi(sirket.motor) };
+  const yol = aracAl(motor).yol;
   const apiModu = sirket.giris[motor] === 'api';
   const anahtar = apiModu ? anahtarlar.al(motor) : '';
   if (apiModu && !anahtar) return { hata: 'anahtarYok' };
@@ -526,7 +603,9 @@ async function beyinBaslat({ sutun, satir }) {
   const hedef = path.join(app.getPath('userData'), 'calisma', 'beyin');
   let cikti;
   try {
-    cikti = derle(sirket, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, motor, codexModel: motor === 'codex' ? codexModelCoz() : null });
+    cikti = EK_MOTORLAR.includes(motor)
+      ? ekDerle(motor, sirket, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, mcpAdres: mcpAdresi(), araclar: serbestAraclar({ beyin: true }), apiModu })
+      : derle(sirket, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, motor, codexModel: motor === 'codex' ? codexModelCoz() : null });
   } catch (e) {
     return { hata: 'derleme', ayrinti: String(e.message || e) };
   }
@@ -534,7 +613,13 @@ async function beyinBaslat({ sutun, satir }) {
   const talimat = beyinTalimati(depo.veri);
   const env = motorOrtami(motor, sirket, ortam, anahtar, { codexApiKlasoru: codexApiKlasoru() });
   let arg;
-  if (motor === 'claude') {
+  if (EK_MOTORLAR.includes(motor)) {
+    fs.writeFileSync(cikti.sefDosya, talimat);
+    Object.assign(env, cikti.env);
+    const medya = path.join(app.getPath('userData'), 'medya');
+    fs.mkdirSync(medya, { recursive: true });
+    arg = ekArgumanlari(motor, sirket, { ekKlasorler: [medya, skiller.klasor] });
+  } else if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
     // mesajlaşmadan gelen fotoğraf ve dosyalar bu klasörde durur: beyin onları açıp okuyabilsin
     const medya = path.join(app.getPath('userData'), 'medya');
@@ -816,11 +901,11 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   const k = katAl(anahtar);
   if (k.oturum.acik) return { hata: 'acik' };
   if (sunucuHata) return { hata: 'sunucu', ayrinti: sunucuHata };
-  if (!claude && !codex) await motorlarYenile();
+  if (!MOTORLAR.some((m) => aracAl(m))) await motorlarYenile();
   const sirket = ozelGorunumu(anahtar);
   const motor = motorCoz(sirket, durumlar(), anahtarlar.durum());
-  if (!motor) return { hata: sirket.motor === 'otomatik' ? 'motorYok' : sirket.motor === 'codex' ? 'codexYok' : 'claudeYok' };
-  const yol = motor === 'claude' ? claude.yol : codex.yol;
+  if (!motor) return { hata: motorYokHatasi(sirket.motor) };
+  const yol = aracAl(motor).yol;
   const apiModu = sirket.giris[motor] === 'api';
   const anahtarDeger = apiModu ? anahtarlar.al(motor) : '';
   if (apiModu && !anahtarDeger) return { hata: 'anahtarYok' };
@@ -835,14 +920,21 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   const modelli = { ...sirket, sef: { ...sirket.sef, model: ajan.model || sirket.modeller.claude.calisan, codexModel: ajan.codexModel || '' } };
   let cikti;
   try {
-    cikti = derle(modelli, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, motor, codexModel: motor === 'codex' ? { ...codexModelCoz(), koordinator: ajan.codexModel || codexModelCoz().calisan } : null });
+    cikti = EK_MOTORLAR.includes(motor)
+      ? ekDerle(motor, modelli, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, mcpAdres: mcpAdresi() + '/' + encodeURIComponent(anahtar), araclar: serbestAraclar({ ozel: true }), apiModu })
+      : derle(modelli, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, motor, codexModel: motor === 'codex' ? { ...codexModelCoz(), koordinator: ajan.codexModel || codexModelCoz().calisan } : null });
   } catch (e) {
     return { hata: 'derleme', ayrinti: String(e.message || e) };
   }
   const talimat = ozelMetni(gorunum(o.katId), ajan, { klasor, calisma });
   const env = motorOrtami(motor, sirket, ortam, anahtarDeger, { codexApiKlasoru: codexApiKlasoru() });
   let arg;
-  if (motor === 'claude') {
+  if (EK_MOTORLAR.includes(motor)) {
+    fs.writeFileSync(cikti.sefDosya, talimat);
+    Object.assign(env, cikti.env);
+    // sohbet odası salt okunur (plan modu), çalışma odası düzenlemeleri kendiliğinden yapar
+    arg = ekArgumanlari(motor, { ...modelli, izinModu: calisma ? 'acceptEdits' : 'plan' }, { surdur: eski, ekKlasorler: [skiller.klasor] });
+  } else if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
     // sohbet odası yalnızca okur (eklenen dosyalar). Çalışma odası kendi klasörüne yazar, komutlar onaya düşer.
     arg = [...oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` }), '--add-dir', skiller.klasor, ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + encodeURIComponent(anahtar), hedef, ozel: true })];
@@ -864,7 +956,7 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   }
   k.sohbet.length = 0;
   try {
-    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ozel: true, katId: o.katId, ajanId: o.ajanId, codexOturum: motor === 'codex' && eski ? eski : '', proje: klasor, surdurulen: !!eski, baslangic: Date.now() } });
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ozel: true, katId: o.katId, ajanId: o.ajanId, codexOturum: motor !== 'claude' && eski ? eski : '', proje: klasor, surdurulen: !!eski, baslangic: Date.now() } });
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
@@ -1634,6 +1726,12 @@ function mcpAraclari(kapsam) {
 // Yalnızca okuyan komutlar: hangi izin modunda olursa olsun sorulmaz (değiştiren, silen, ağa yazan komut yok)
 const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git branch', 'git rev-parse', 'git remote -v', 'git worktree list', 'git ls-files', 'git blame', 'ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'tree', 'which', 'file', 'stat', 'du', 'npm test', 'npm run test', 'npm run lint', 'npm run typecheck', 'npm ls', 'npx tsc --noEmit', 'gh pr list', 'gh pr view', 'gh pr status', 'gh pr checks', 'gh run list', 'gh run view', 'gh repo view', 'gh issue list', 'gh issue view'].map((k) => `Bash(${k}:*)`);
 
+// Sormadan çalışabilen ofis araçları (motorların izin listelerine girer)
+function serbestAraclar({ beyin, ozel }) {
+  const onaysiz = !!depo.veri.tarayiciOnaysiz;
+  return ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+}
+
 function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
@@ -1654,12 +1752,13 @@ function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
 // ---------- taslaklar ----------
 // Taslağı seçili motor yazar. Hazır değilse öbür hazır motor kullanılır.
 async function taslakCalistir(istem, temizle_) {
-  if (!claude && !codex) await motorlarYenile();
+  if (!MOTORLAR.some((m) => aracAl(m))) await motorlarYenile();
   const sirket = depo.veri;
   const d = durumlar();
   const anahtarVar = anahtarlar.durum();
   const secilen = motorCoz(sirket, d, anahtarVar);
-  const sira = [secilen, ...MOTORLAR.filter((m) => m !== secilen)].filter((m) => m && d[m]);
+  // tek seferlik taslak yalnızca Claude ve Codex ile (Kimi ve Gemini oturumlarda çalışır)
+  const sira = [secilen, ...MOTORLAR.filter((m) => m !== secilen)].filter((m) => m && d[m] && (m === 'claude' || m === 'codex'));
   const motor = sira.find((m) => hazirMi(m, sirket, d, anahtarVar)) || sira[0];
   if (!motor) return { hata: 'motorYok' };
   const anahtar = sirket.giris[motor] === 'api' ? anahtarlar.al(motor) : '';
@@ -1713,7 +1812,7 @@ function ipcKur() {
   });
 
   h('sirket:guncelle', (yama) => {
-    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'sonProje', 'bildirim', 'bildirimSesi', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme', 'tarayiciOnaysiz'];
+    const izinli = ['ad', 'kurallar', 'kurulumBitti', 'takimModu', 'izinModu', 'claudeYolu', 'codexYolu', 'kimiYolu', 'geminiYolu', 'sonProje', 'bildirim', 'bildirimSesi', 'motor', 'giris', 'modeller', 'beyin', 'projeKoku', 'otomatikGuncelleme', 'tarayiciOnaysiz'];
     const temiz = {};
     for (const k of izinli) if (yama && k in yama) temiz[k] = yama[k];
     // Telegram sahip bağlantısı yalnızca bot üzerinden kurulur, arayüzden değiştirilemez
@@ -1828,6 +1927,7 @@ function ipcKur() {
     return { tamam: true, klasor: s.filePaths[0] };
   });
   h('proje:kaydet', (tanim) => {
+    setTimeout(hafizaTohumla, 1500);
     const t = tanim && typeof tanim === 'object' ? { ...tanim } : {};
     delete t.sonOturum;
     delete t.sonAcilis;
@@ -1938,7 +2038,7 @@ function ipcKur() {
   h('claude:yolSec', async (motor = 'claude') => {
     const s = await dialog.showOpenDialog(pencere, { properties: ['openFile'] });
     if (s.canceled || !s.filePaths[0]) return { iptal: true };
-    depo.guncelle(motor === 'codex' ? { codexYolu: s.filePaths[0] } : { claudeYolu: s.filePaths[0] });
+    depo.guncelle({ [(MOTORLAR.includes(motor) ? motor : 'claude') + 'Yolu']: s.filePaths[0] });
     gonder('sirket', gorunum());
     await motorlarYenile();
     return { claude, motorlar: motorBilgi() };
@@ -2774,6 +2874,7 @@ if (!app.requestSingleInstanceLock()) {
     skiller = new SkillDeposu(path.join(veri, 'skiller'));
     kayit = new KayitDefteri(path.join(veri, 'kayit'));
     beyinNotlari = new BeyinNotlari(path.join(veri, 'beyin'));
+    setTimeout(hafizaTohumla, 3000);
     anahtarlar = new AnahtarDeposu(path.join(veri, 'anahtarlar.json'), {
       kullanilabilir: () => safeStorage.isEncryptionAvailable(),
       sifrele: (m) => safeStorage.encryptString(m),

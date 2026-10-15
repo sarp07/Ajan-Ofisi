@@ -43,7 +43,7 @@ export function kurulum({ bitti }) {
   // Motorlar aranırken iki kartın iskeleti ve kayan ışık
   function motorAraniyor(t) {
     const iskelet = (ad) => h('div', { class: 'motorKart iskelet' }, h('p', { class: 'durumSatir' }, h('span', { class: 'donen' }), t('motor.araniyorAdli', { x: ad })), h('span', { class: 'iskeletCizgi' }), h('span', { class: 'iskeletCizgi kisa' }));
-    return [h('div', { class: 'motorIzgara' }, iskelet(t('motor.arac.claude')), iskelet(t('motor.arac.codex'))), h('p', { class: 'ipucu' }, t('kur.motorAraniyor'))];
+    return [h('div', { class: 'motorIzgara' }, iskelet(t('motor.arac.claude')), iskelet(t('motor.arac.codex')), iskelet(t('motor.arac.kimi')), iskelet(t('motor.arac.gemini'))), h('p', { class: 'ipucu' }, t('kur.motorAraniyor'))];
   }
 
   // ---------- 1. motor ----------
@@ -100,6 +100,8 @@ export function kurulum({ bitti }) {
         ['otomatik', t('motor.otomatik')],
         ['claude', t('motor.claude')],
         ['codex', t('motor.codex')],
+        ['kimi', t('motor.kimi')],
+        ['gemini', t('motor.gemini')],
       ].map(([d, e]) => h('button', { type: 'button', class: s.motor === d ? 'secili' : '', onclick: async () => (await api.sirketGuncelle({ motor: d }), ciz()) }, e))
     );
     return [
@@ -109,7 +111,7 @@ export function kurulum({ bitti }) {
       !mb
         ? motorAraniyor(t)
         : [
-            h('div', { class: 'motorIzgara' }, kart('claude'), kart('codex')),
+            h('div', { class: 'motorIzgara' }, kart('claude'), kart('codex'), kart('kimi'), kart('gemini')),
             h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('motor.secim')), secim, h('span', { class: 'alanIpucu' }, t('motor.secimIpucu'))),
             h(
               'div',

@@ -1,16 +1,17 @@
-// Motorlar: oturumu çalıştıran komut satırı aracı. Claude Code ya da OpenAI Codex.
+// Motorlar: oturumu çalıştıran komut satırı aracı. Claude Code, OpenAI Codex, Kimi Code ya da Gemini CLI.
 // Uygulama giriş bilgisini görmez. Abonelik girişi aracın kendi giriş akışıyla yapılır,
 // API anahtarı ise uygulamada işletim sisteminin şifreli deposunda tutulur ve yalnızca ortam değişkeni olarak verilir.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { yolAra, calistir } from './claude.js';
+import { EK_MOTORLAR, EK_KURULUM, ekGirisDurumu, ekGirisKomutu, ekAnahtarOrtami, EK_ANAHTAR_DEGISKENI } from './ek-motorlar.js';
 
-export const MOTORLAR = ['claude', 'codex'];
+export const MOTORLAR = ['claude', 'codex', ...EK_MOTORLAR];
 export const MOTOR_SECIMLERI = ['otomatik', ...MOTORLAR];
 export const GIRIS_YONTEMLERI = ['abonelik', 'api'];
 // Ortamdaki anahtar değişkenleri: abonelik seçiliyken kullanıcının kabuğundaki anahtar girişi ezmesin diye silinir
-export const ANAHTAR_DEGISKENI = { claude: 'ANTHROPIC_API_KEY', codex: 'OPENAI_API_KEY' };
+export const ANAHTAR_DEGISKENI = { claude: 'ANTHROPIC_API_KEY', codex: 'OPENAI_API_KEY', ...EK_ANAHTAR_DEGISKENI };
 
 const WIN = process.platform === 'win32';
 
@@ -55,12 +56,14 @@ export function kurulumKomutlari() {
   return {
     claude: WIN ? 'irm https://claude.ai/install.ps1 | iex' : 'curl -fsSL https://claude.ai/install.sh | bash',
     codex: 'npm install -g @openai/codex',
+    ...EK_KURULUM,
   };
 }
 
 // Abonelik girişi var mı. Hesap e-postası yalnızca sahibine gösterilmek için okunur.
 export async function girisDurumu(motor, yol, env) {
   if (!yol) return { girisli: false };
+  if (EK_MOTORLAR.includes(motor)) return ekGirisDurumu(motor);
   if (motor === 'claude') {
     const s = await calistir(yol, ['auth', 'status'], { env, zamanAsimi: 20000 });
     try {
@@ -78,6 +81,7 @@ export async function girisDurumu(motor, yol, env) {
 }
 
 export function girisKomutu(motor) {
+  if (EK_MOTORLAR.includes(motor)) return ekGirisKomutu(motor);
   return motor === 'claude' ? ['auth', 'login'] : ['login'];
 }
 
@@ -132,9 +136,13 @@ export function motorOrtami(motor, sirket, ortam, anahtar, { codexApiKlasoru } =
   for (const k of Object.keys(env)) if (/^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|ENTRYPOINT|SSE_PORT)|CODEX_(THREAD_ID|SANDBOX.*))$/.test(k)) delete env[k];
   const degisken = ANAHTAR_DEGISKENI[motor];
   delete env[degisken];
+  // Gemini kabuktaki anahtarı Google girişinin önüne koyar; Kimi'nin KIMI_MODEL_* değişkenleri girişi ezer
+  if (motor === 'gemini') for (const k of ['GEMINI_API_KEY', 'GOOGLE_API_KEY']) delete env[k];
+  if (motor === 'kimi') for (const k of Object.keys(env)) if (/^KIMI_MODEL_/.test(k)) delete env[k];
   // sahibin onayını bekleyen MCP araçları için uzun zaman aşımı (ms)
   if (motor === 'claude' && !env.MCP_TOOL_TIMEOUT) env.MCP_TOOL_TIMEOUT = '900000';
-  if (sirket.giris[motor] === 'api' && anahtar) {
+  if (sirket.giris[motor] === 'api' && anahtar && EK_MOTORLAR.includes(motor)) Object.assign(env, ekAnahtarOrtami(motor, anahtar));
+  else if (sirket.giris[motor] === 'api' && anahtar) {
     env[degisken] = anahtar;
     // Codex anahtarla girişi kendi klasörüne yazar. Kullanıcının ~/.codex girişi bozulmasın diye ayrı klasör kullanılır.
     if (motor === 'codex' && codexApiKlasoru) env.CODEX_HOME = codexApiKlasoru;
