@@ -2,7 +2,7 @@
 import { h, doldur, ikon, alan, anahtar } from '../dom.js';
 import { depo, api, dinle, yayinla, bildir, hataMetni } from '../depo.js';
 
-const ALAN_SIRA = ['tasarim', 'yazi', 'seo', 'guvenlik', 'surec', 'kod', 'test', 'mobil', 'video', 'skill'];
+const ALAN_SIRA = ['tasarim', 'yazi', 'sosyal', 'seo', 'guvenlik', 'surec', 'kod', 'test', 'mobil', 'video', 'skill'];
 
 export function skillerSayfasi() {
   const kok = h('div', { class: 'sayfa skillSayfa' });

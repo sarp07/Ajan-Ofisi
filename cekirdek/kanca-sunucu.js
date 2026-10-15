@@ -28,7 +28,7 @@ export function kancaSunucu({ port, anahtar, olay, mcp = null }) {
     const url = String(istek.url || '');
     // /mcp/<anahtar>: beyin. /mcp/<anahtar>/<kat>: o katın şefi (yalnızca kendi katının araçları)
     if (mcp && (url === mcpYol || url.startsWith(mcpYol + '/'))) {
-      const kapsam = url === mcpYol ? '' : decodeURIComponent(url.slice(mcpYol.length + 1)).slice(0, 40);
+      const kapsam = url === mcpYol ? '' : decodeURIComponent(url.slice(mcpYol.length + 1)).slice(0, 80);
       // durumsuz sunucu: SSE akışı açılmaz
       if (istek.method !== 'POST') {
         yanit.writeHead(405, { allow: 'POST' }).end();

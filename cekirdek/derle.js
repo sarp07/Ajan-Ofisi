@@ -249,6 +249,11 @@ export function ozelMetni(sirket, ajan, { klasor = '', calisma = false } = {}) {
   if ((ajan.talimat || '').trim()) bolum.push(ajan.talimat.trim());
   if (ajan.kurallar.length) bolum.push(`## ${m.kurallarin}\n\n${liste(ajan.kurallar)}`);
   bolum.push(OZEL[dil](ajan.ad, (sirket.beyin && sirket.beyin.sahip) || '', calisma));
+  bolum.push(
+    dil === 'en'
+      ? 'Tools: you can use the office browser (tarayicilar, tarayici_ac, tarayici_alanlar, tarayici_yaz, tarayici_tikla, tarayici_goruntu). To change a filled field use tarayici_yaz with temizle true; never ask the owner to clear a field. Before any click or text that posts, sends a message, connects or saves a profile change, ask with sahip_onayi. When you need something from the office (a project screenshot, a live page or app image, work from a floor team, project facts), ask the brain with ofise_ilet; the result arrives in this room as a message starting with "[Brain name]", files in the ekler folder. Only the request you choose to pass on leaves this room.'
+      : 'Araçların: ofis tarayıcısını kullanabilirsin (tarayicilar, tarayici_ac, tarayici_alanlar, tarayici_yaz, tarayici_tikla, tarayici_goruntu). Dolu bir alanı değiştirmek için tarayici_yaz ile temizle true kullan; sahipten alanı boşaltmasını isteme. Paylaşan, mesaj gönderen, bağlantı kuran ya da profil değişikliğini kaydeden her tıklama ve yazıdan önce sahip_onayi ile sor. Ofisten bir şey gerektiğinde (projenin ekran görüntüsü, canlı sitenin ya da uygulamanın görseli, bir katın ekibinden iş, proje bilgisi) ofise_ilet ile beyne iste; sonuç bu odaya beynin adıyla "[Ad]" diye başlayan bir mesajla, dosyalar ekler klasörüne gelir. Odadan yalnızca senin bilerek ilettiğin istek çıkar.'
+  );
   if (klasor) bolum.push(dil === 'en' ? `Your room folder: ${klasor}. Files the owner attaches are in its ekler folder; read them when they are mentioned.${calisma ? ' Save what you produce into its ciktilar folder.' : ''}` : `Oda klasörün: ${klasor}. Sahibin eklediği dosyalar ekler klasöründe, bahsedildiğinde oku.${calisma ? ' Ürettiklerini ciktilar klasörüne kaydet.' : ''}`);
   return bolum.join('\n\n') + '\n';
 }

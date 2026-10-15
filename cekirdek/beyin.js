@@ -29,6 +29,7 @@ Kuralların:
 Kişisel kat:
 1. Sahibin kişisel ihtiyaçları (koç, destek, reklam, tasarım gibi) için kişisel_kat ile kişisel katı aç ve sahibin istediği kişileri kat_ekibi_kur ile ekle. Hangi kişilerin ekleneceğine sahip karar verir.
 2. Kişisel katta şef yoktur, şefi sensin. Her kişinin ayrı odası vardır, sahip onlarla bire bir konuşur. Bu konuşmalar sana görünmez, sorma ve okumaya çalışma.
+3. Odadaki biri ofise_ilet ile sana iş iletebilir; bu mesajlar "[Kişisel · Ad]" diye gelir (ör. sosyal medya uzmanı bir gönderi için HarDress'in ekran görüntüsünü ister). İşi ilgili kata kat_sefine_yaz ile ver: canlıysa tarayıcıdan, değilse projeyi geliştirme modunda kaldırıp ekran görüntüsü alınsın. Sonucu ve dosya yollarını kisiye_yaz ile o kişinin odasına gönder. Kendin yapabildiğin işi (tarayıcıdan ekran görüntüsü gibi) doğrudan yap.
 
 Mesajlaşma (WhatsApp, Telegram, e-posta):
 1. WhatsApp senin kendi numaranla doğrudan bağlıdır, tarayıcı gerekmez. Sahibin WhatsApp mesajları sana "[WhatsApp · ...]" diye kendiliğinden gelir; WhatsApp'ı yoklama, tarayıcıdan okumaya çalışma. Cevabı whatsapp_yaz ile gönder. Uzun işlerde ara ara kısa durum mesajı at.
@@ -85,6 +86,7 @@ Your rules:
 Personal floor:
 1. For the owner's personal needs (coach, wellbeing, advertising, design and so on) open the personal floor with kisisel_kat and add the people the owner wants with kat_ekibi_kur. The owner decides who is added.
 2. The personal floor has no chief, you are its chief. Each person has their own room and the owner talks to them one to one. Those chats are invisible to you; do not ask about or try to read them.
+3. Someone in a room can hand you work with ofise_ilet; those messages arrive as "[Personal · Name]" (for example the social media specialist asks for a HarDress screenshot for a post). Give the work to the right floor with kat_sefine_yaz: from the browser if it is live, otherwise the project is started in development mode and captured. Send the result and file paths to that person's room with kisiye_yaz. Do directly what you can do yourself (such as a browser screenshot).
 
 Messaging (WhatsApp, Telegram, email):
 1. WhatsApp is connected directly with your own number; no browser is needed. The owner's WhatsApp messages reach you by themselves as "[WhatsApp · ...]"; do not poll WhatsApp or try to read it in the browser. Reply with whatsapp_yaz. On long jobs send a short status message now and then.
@@ -255,6 +257,11 @@ export function beyinAraclari(ops) {
       aciklama: 'Katın oturumunu başlatır (kat şefi ve ekip çalışmaya hazır olur). Zaten açıksa bir şey yapmaz.',
       sema: nesne({ kat_id: yazi('Katın kimliği') }, ['kat_id']),
       calistir: async (g) => ops.oturumBaslat(String(g.kat_id)),
+    },
+    kisiye_yaz: {
+      aciklama: 'Bir katın (çoğunlukla kişisel katın) üyesine kendi odasında mesaj yazar ve istersen dosya (ekran görüntüsü, görsel, rapor) gönderir; dosyalar odanın ekler klasörüne kopyalanır. "[Kişisel · Ad]" diye gelen isteklerin cevabını böyle ver. Oda kapalıysa açılır.',
+      sema: nesne({ kat_id: yazi('Katın kimliği'), kisi: yazi('Üyenin adı ya da kimliği'), mesaj: yazi('Mesaj'), dosyalar: { type: 'array', items: { type: 'string' }, maxItems: 10, description: 'Gönderilecek dosyaların tam yolları' } }, ['kat_id', 'kisi', 'mesaj']),
+      calistir: async (g) => ops.kisiyeYaz(String(g.kat_id), String(g.kisi), String(g.mesaj), Array.isArray(g.dosyalar) ? g.dosyalar.map(String) : []),
     },
     kat_sefine_yaz: {
       aciklama: 'Kat şefine mesaj yazar. Kat oturumu açık olmalı. İşi tek mesajda, bütün bağlamıyla ver.',

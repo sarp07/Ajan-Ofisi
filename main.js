@@ -39,6 +39,7 @@ import { onayKomutu } from './cekirdek/onay-komutu.js';
 import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
+import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -719,6 +720,33 @@ const beyinIslemleri = {
     if (!r || r.hata) throw new Error('Kat oturumu başlatılamadı: ' + ((r && (r.ayrinti || r.hata)) || ''));
     return 'Kat oturumu başladı. Kat ilk kez açılıyorsa sahibin klasör güveni onayı gerekebilir, kat_sohbeti ile kontrol et.';
   },
+  // kişisel kattaki (ya da bir kattaki) üyenin odasına mesaj ve dosya
+  kisiyeYaz: async (katId, kisi, mesaj, dosyalar) => {
+    const p = depo.proje(katId);
+    if (!p) throw new Error('Kat bulunamadı: ' + katId);
+    const ara = String(kisi).toLocaleLowerCase('tr');
+    const ajan = p.ajanlar.find((a) => a.id === kisi || a.ad.toLocaleLowerCase('tr') === ara);
+    if (!ajan) throw new Error(`Bu katta "${kisi}" yok. Üyeler: ${p.ajanlar.map((a) => a.ad).join(', ')}`);
+    const klasor = odaHazirla(p.id, ajan.id);
+    const kopyalanan = [];
+    for (const d of dosyalar.slice(0, 10)) {
+      const kaynak = path.resolve(d);
+      if (!fs.existsSync(kaynak) || !fs.statSync(kaynak).isFile()) throw new Error('Dosya bulunamadı: ' + d);
+      const hedef = path.join(klasor, 'ekler', path.basename(kaynak));
+      fs.copyFileSync(kaynak, hedef);
+      kopyalanan.push(hedef);
+    }
+    const anahtar = ozelAnahtar(p.id, ajan.id);
+    let k = katAl(anahtar);
+    if (!k.oturum.acik) {
+      const r = await ozelBaslat({ katId: p.id, ajanId: ajan.id, surdur: true, sutun: 120, satir: 36 });
+      if (!r || r.hata) throw new Error('Oda açılamadı: ' + ((r && (r.ayrinti || r.hata)) || ''));
+      k = katAl(anahtar);
+    }
+    const ek = kopyalanan.length ? `\nDosyalar (ekler klasöründe): ${kopyalanan.join(', ')}` : '';
+    oturumaYaz(k, `[${depo.veri.beyin.ad}] ${mesaj}${ek}`).catch(() => {});
+    return `Mesaj ${ajan.ad} adlı üyenin odasına iletildi${kopyalanan.length ? `, ${kopyalanan.length} dosya eklendi` : ''}.`;
+  },
   sefeYaz: async (katId, mesaj) => {
     if (depo.proje(katId)?.tur === 'kisisel') throw new Error('Kişisel katın şefi yoktur.');
     const k = katlar.get(katId);
@@ -798,7 +826,7 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
     // sohbet odası yalnızca okur (eklenen dosyalar). Çalışma odası kendi klasörüne yazar, komutlar onaya düşer.
-    arg = [...oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` }), '--add-dir', skiller.klasor];
+    arg = [...oturumArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : '' }, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${ajan.ad}` }), '--add-dir', skiller.klasor, ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + encodeURIComponent(anahtar), hedef, ozel: true })];
     if (!calisma) {
       const i = arg.indexOf('--disallowedTools');
       const yasak = 'Bash,Edit,Write,MultiEdit,NotebookEdit,PowerShell';
@@ -813,7 +841,7 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
         return { hata: 'anahtarGiris', ayrinti: String(e.message || e) };
       }
     }
-    arg = codexArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : 'plan' }, { ...cikti, talimat }, { klasor, surdur: eski });
+    arg = [...codexArgumanlari({ ...modelli, izinModu: calisma ? 'acceptEdits' : 'plan' }, { ...cikti, talimat }, { klasor, surdur: eski }), ...mcpBayraklari('codex', { adres: mcpAdresi() + '/' + encodeURIComponent(anahtar), ozel: true })];
   }
   k.sohbet.length = 0;
   try {
@@ -836,8 +864,14 @@ function kisiselKatKur() {
   const klasor = path.join(app.getPath('userData'), 'kisisel');
   fs.mkdirSync(klasor, { recursive: true });
   const p = depo.projeKaydet({ klasor, ad: depo.veri.dil === 'en' ? 'Personal' : 'Kişisel', tur: 'kisisel' });
+  // kişisel kat hazır bir sosyal medya uzmanıyla gelir: hesapları yönetir, beyni yormadan paylaşımları hazırlar
+  try {
+    depo.sablondanEkle('sosyal', p.id);
+  } catch (e) {
+    gunluk('kisisel', 'sosyal medya uzmanı eklenemedi', String(e.message || e));
+  }
   sirketYayinla();
-  return p;
+  return depo.proje(p.id);
 }
 
 // ---------- odalar: ekler, çıktılar, dışa aktarma ----------
@@ -1396,9 +1430,16 @@ const tumHesaplar = () =>
     ...(/^https?:\/\//i.test(p.test.adres) ? [{ id: 'test-' + p.id, platform: 'diger', ad: 'Test', not: p.test.adres, adres: p.test.adres, katId: p.id, kat: p.ad, test: true }] : []),
   ]);
 
+// Sosyal medya hesapları: kişisel kattakiler bütün katların bu hesaplarına erişir (sosyal medya ajanı hepsini yönetir)
+const SOSYAL_PLATFORMLAR = new Set(['linkedin', 'instagram', 'x', 'tiktok', 'youtube', 'facebook', 'discord', 'telegram']);
 function kapsamHesaplari(kapsam) {
   const hepsi = tumHesaplar();
-  return kapsam === 'beyin' ? hepsi : hepsi.filter((h) => h.katId === kapsam);
+  if (kapsam === 'beyin') return hepsi;
+  const o = ozelCoz(kapsam);
+  const katId = o ? o.katId : kapsam;
+  const kat = hepsi.filter((h) => h.katId === katId);
+  if (depo.proje(katId)?.tur !== 'kisisel') return kat;
+  return [...kat, ...hepsi.filter((h) => h.katId !== katId && SOSYAL_PLATFORMLAR.has(h.platform))];
 }
 
 // Sahibin onayı: konuşma paneline onay kartı düşer, sahip tıklayınca söz çözülür
@@ -1545,7 +1586,26 @@ const depoOrtami = (id, depoAdi) => {
   return { git: github.git, gh: github.durum.girisli ? github.yol : null, env: ortam, klasor: depoKlasoru(p, depoAdi) };
 };
 
+// Özel oda: o kişinin tarayıcı araçları (kendi katının hesapları; kişisel katta sosyal hesaplar da), sahip onayı ve beyne iletme
+function ozelMcpAraclari(anahtar) {
+  const o = ozelCoz(anahtar);
+  const p = o && depo.proje(o.katId);
+  const ajan = p && p.ajanlar.find((a) => a.id === o.ajanId);
+  if (!ajan) return {};
+  return {
+    ...tarayiciAraclari(tarayiciIslemleri(anahtar)),
+    ...ozelAraclari({
+      ilet: async (mesaj) => {
+        const kisisel = p.tur === 'kisisel';
+        await beyneMesaj(`[${kisisel ? (depo.veri.dil === 'en' ? 'Personal' : 'Kişisel') : p.ad} · ${ajan.ad}] ${mesaj}\n(Cevabı ve dosyaları kisiye_yaz ile kat_id "${p.id}", kisi "${ajan.ad}" olarak gönder.)`);
+        return 'İstek beyne iletildi. Sonuç bu odaya "[' + depo.veri.beyin.ad + ']" diye başlayan bir mesajla gelecek; beklerken sahiple konuşmaya devam et.';
+      },
+    }),
+  };
+}
+
 function mcpAraclari(kapsam) {
+  if (ozelCoz(kapsam)) return ozelMcpAraclari(kapsam);
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
   return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
@@ -1555,10 +1615,10 @@ function mcpAraclari(kapsam) {
 // Yalnızca okuyan komutlar: hangi izin modunda olursa olsun sorulmaz (değiştiren, silen, ağa yazan komut yok)
 const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git branch', 'git rev-parse', 'git remote -v', 'git worktree list', 'git ls-files', 'git blame', 'ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'tree', 'which', 'file', 'stat', 'du', 'npm test', 'npm run test', 'npm run lint', 'npm run typecheck', 'npm ls', 'npx tsc --noEmit', 'gh pr list', 'gh pr view', 'gh pr status', 'gh pr checks', 'gh run list', 'gh run view', 'gh repo view', 'gh issue list', 'gh issue view'].map((k) => `Bash(${k}:*)`);
 
-function mcpBayraklari(motor, { adres, hedef, beyin }) {
+function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -2721,7 +2781,19 @@ if (!app.requestSingleInstanceLock()) {
     botlariKur();
     oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
     // yalnızca sınama ortamında: otomatik testler ajan araçlarını doğrudan çağırabilsin
-    if (SINAMA) globalThis.__ofisSinama = { mcpAraclari, tumHesaplar };
+    if (SINAMA)
+      globalThis.__ofisSinama = {
+        mcpAraclari,
+        tumHesaplar,
+        // kişisel kat ve odasının araçları (sınama)
+        kisiselDene: async () => {
+          const p = kisiselKatKur();
+          depo.projeKaydet({ id: p.id, hesaplar: [{ platform: 'linkedin', ad: 'sarp', not: '' }] });
+          const ajan = depo.proje(p.id).ajanlar[0];
+          const a = mcpAraclari(ozelAnahtar(p.id, ajan.id));
+          return { ajan: ajan.ad, araclar: Object.keys(a), hesaplar: await a.tarayicilar.calistir({}), talimat: ajan.talimat.slice(-120) };
+        },
+      };
     setInterval(() => {
       for (const k of katlar.values()) if (k.oturum.acik) durumGonder(k, true);
     }, 1000);

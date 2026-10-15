@@ -60,12 +60,12 @@ export function tarayiciAraclari(ops) {
       calistir: async (g) => ops.tikla(String(g.hesap_id), { no: g.no ? String(g.no) : '', metin: g.metin ? String(g.metin) : '', secici: g.secici ? String(g.secici) : '' }),
     },
     tarayici_yaz: {
-      aciklama: 'Bir alana gerçek klavye girişi gibi yazar ve alanın son değerini döndürür (yazının alana düştüğünü buradan doğrula). Alan: tarayici_alanlar no, etiket (ör. "Başlık") ya da CSS seçici; hiçbiri verilmezse odaktaki alan. temizle true: önce alanın içini siler. enter true: sonra Enter. Açılır listede (select) metin seçeneğin adıdır. ' + KURAL,
+      aciklama: 'Bir alana gerçek klavye girişi gibi yazar ve alanın son değerini döndürür (yazının alana düştüğünü buradan doğrula). Alan: tarayici_alanlar no, etiket (ör. "Başlık") ya da CSS seçici; hiçbiri verilmezse odaktaki alan. temizle true: alanın içindeki metni tamamen siler ve yerine yazar (dolu alanı değiştirmek için bunu kullan; sahipten alanı boşaltmasını isteme). enter true: sonra Enter. Açılır listede (select) metin seçeneğin adıdır. ' + KURAL,
       sema: nesne({ hesap_id: hesapId, metin: yazi('Yazılacak metin'), no: yazi('tarayici_alanlar numarası'), etiket: yazi('Alanın etiketi ya da yer tutucusu'), secici: yazi('CSS seçicisi'), temizle: { type: 'boolean' }, enter: { type: 'boolean' } }, ['hesap_id', 'metin']),
       calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), no: g.no ? String(g.no) : '', etiket: g.etiket ? String(g.etiket) : '', secici: g.secici ? String(g.secici) : '', temizle: !!g.temizle, enter: !!g.enter }),
     },
     tarayici_tus: {
-      aciklama: 'Klavye tuşuna basar: Enter, Tab, Escape, Backspace, ArrowDown, ArrowUp, PageDown ya da Ctrl+A, Cmd+A gibi birleşimler. ' + KURAL,
+      aciklama: 'Klavye tuşuna basar: Enter, Tab, Escape, Backspace, ArrowDown, ArrowUp, PageDown ya da Cmd+A (tümünü seç), Cmd+C, Cmd+V, Cmd+X, Cmd+Z gibi birleşimler; bunlar sayfada gerçekten çalışır. ' + KURAL,
       sema: nesne({ hesap_id: hesapId, tus: yazi('Tuş ya da birleşim') }, ['hesap_id', 'tus']),
       calistir: async (g) => ops.tus(String(g.hesap_id), String(g.tus)),
     },

@@ -351,21 +351,40 @@ export class TarayiciOdasi {
   // Yazar: öğeye odaklanır, istenirse içini temizler, metni gerçek klavye girişi gibi ekler, sonra alanın değerini okur.
   // Metin alana düşmediyse React ve zengin metin kutularıyla uyumlu yedek yöntem kullanılır.
   async yaz(id, { no, secici, etiket, metin, temizle, enter }) {
+    const s = this.sekmeler.get(id);
     const wc = this.sekme(id);
     const yazi = String(metin || '');
     let b = null;
     if (no || secici || etiket) {
       b = await this.bul(id, { no, secici, etiket }, temizle ? 'odaklaTemizle' : 'odakla');
       if (!b) throw new Error('Yazılacak alan bulunamadı. tarayici_alanlar ile alanları listeleyip numarasıyla dene.');
+      // gerçek odak: ana çerçevede alana gerçek fare tıklaması (React ve LinkedIn gibi editörler seçimi buna göre kurar)
+      if (b.fi === 0 && (!s || s.cihaz === 'masaustu') && b.bilgi.x >= 0 && b.bilgi.y >= 0) {
+        const x = Math.round(b.bilgi.x);
+        const y = Math.round(b.bilgi.y);
+        wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+        wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+        await new Promise((r) => setTimeout(r, 80));
+      }
     }
-    await wc.insertText(yazi);
+    if (temizle) {
+      // tarayıcının kendi düzenleme komutları: tümünü seç ve sil (klavye kısayolu menüye takılmaz)
+      wc.selectAll();
+      await new Promise((r) => setTimeout(r, 40));
+      wc.delete();
+      await new Promise((r) => setTimeout(r, 80));
+      if (b) await b.cerceve.executeJavaScript(BOSALT(b.bilgi.no));
+    }
+    if (yazi) await wc.insertText(yazi);
     await new Promise((r) => setTimeout(r, 120));
     let deger = '';
     if (b) {
-      deger = await b.cerceve.executeJavaScript(YEDEK(b.bilgi.no, yazi));
+      deger = await b.cerceve.executeJavaScript(YEDEK(b.bilgi.no, yazi, !!temizle));
     }
     if (enter) this.tus(id, 'Enter');
-    return { tamam: true, alan: b ? b.bilgi.etiket : 'odaktaki alan', deger: String(deger || '').slice(0, 300) };
+    const tam = String(deger || '');
+    const uyusmuyor = b && temizle && tam.trim() !== yazi.trim();
+    return { tamam: !uyusmuyor, alan: b ? b.bilgi.etiket : 'odaktaki alan', deger: tam.slice(0, 300), ...(uyusmuyor ? { uyari: 'Alanın son değeri yazılan metinle aynı değil; ekran görüntüsüyle kontrol et.' } : {}) };
   }
 
   // Klavye tuşu: Enter, Tab, Escape, Backspace, ok tuşları, PageDown; "Ctrl+A" ya da "Cmd+A" gibi birleşimler
@@ -374,6 +393,15 @@ export class TarayiciOdasi {
     const parca = String(tus).split('+');
     const ana = parca.pop();
     const mod = parca.map((m) => ({ cmd: 'meta', ctrl: 'control', alt: 'alt', shift: 'shift' })[m.toLowerCase()] || m.toLowerCase());
+    // düzenleme kısayolları menüye takılır; tarayıcının kendi komutlarıyla yapılır
+    if (mod.some((m) => m === 'meta' || m === 'control') && ana.length === 1) {
+      const k = ana.toLowerCase();
+      const komut = { a: 'selectAll', c: 'copy', x: 'cut', v: 'paste', z: mod.includes('shift') ? 'redo' : 'undo', y: 'redo' }[k];
+      if (komut) {
+        wc[komut]();
+        return { tamam: true };
+      }
+    }
     const kod = { Enter: 'Enter', Tab: 'Tab', Escape: 'Escape', Esc: 'Escape', Backspace: 'Backspace', Delete: 'Delete', ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right', PageDown: 'PageDown', PageUp: 'PageUp', Space: 'Space' }[ana] || ana;
     wc.sendInputEvent({ type: 'keyDown', keyCode: kod, modifiers: mod });
     if (ana === 'Enter' && !mod.length) wc.sendInputEvent({ type: 'char', keyCode: '\r' });
@@ -480,23 +508,44 @@ function BUL(fi, ara, eylem) {
 }
 
 // Yazı alana düştü mü: düşmediyse React uyumlu yedek (yerel value ayarlayıcı + input olayı) ya da execCommand
-function YEDEK(no, metin) {
+// Alanın içini boşaltır (tümünü seç ve sil yetmediyse): React uyumlu değer ayarlayıcı ya da seçip silme
+function BOSALT(no) {
+  return `(() => {
+    const el = ${DERIN_BUL}(${JSON.stringify(no)});
+    if (!el) return;
+    el.focus();
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      if (!el.value) return;
+      const proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } else if (el.isContentEditable && el.innerText.trim()) {
+      const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      document.execCommand('delete');
+    }
+  })()`;
+}
+
+function YEDEK(no, metin, tam = false) {
   return `(() => {
     const el = ${DERIN_BUL}(${JSON.stringify(no)});
     if (!el) return '';
     const metin = ${JSON.stringify(metin)};
+    const tam = ${tam ? 'true' : 'false'};
     const oku = () => (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' ? el.value : el.innerText) || '';
-    if (metin && !oku().includes(metin.slice(0, 40))) {
+    // temizlenip yazıldıysa alan tam olarak metin olmalı; değilse metin olarak ayarlanır
+    if (metin && (tam ? oku().trim() !== metin.trim() : !oku().includes(metin.slice(0, 40)))) {
       el.focus();
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
         const proto = el.tagName === 'INPUT' ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, oku() + metin);
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, tam ? metin : oku() + metin);
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
       } else if (el.tagName === 'SELECT') {
         const o = [...el.options].find((x) => x.text.trim().toLowerCase() === metin.trim().toLowerCase() || x.value === metin);
         if (o) { el.value = o.value; el.dispatchEvent(new Event('change', { bubbles: true })); }
       } else if (el.isContentEditable) {
+        if (tam) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
         document.execCommand('insertText', false, metin);
       }
     }

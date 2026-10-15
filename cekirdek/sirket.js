@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { benzersizKod, gorunusUret, RENKLER, ESYALAR, karma } from './kimlik.js';
-import { SEF_TALIMAT, BASLANGIC_KURALLARI, sablonBul } from './sablonlar.js';
+import { SEF_TALIMAT, BASLANGIC_KURALLARI, sablonBul, ESKI_TALIMATLAR } from './sablonlar.js';
 
 export const MASA_SAYISI = 10; // şefin masası hariç
 export const SES_TURLERI = ['yok', 'sistem', 'elevenlabs', 'openai'];
@@ -23,6 +23,17 @@ const metin = (v, sinir, vars = '') => (typeof v === 'string' ? v.slice(0, sinir
 const kimlik = () => crypto.randomBytes(5).toString('hex');
 const kod10 = () => crypto.randomBytes(6).toString('hex').slice(0, 10);
 const renkMi = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+
+// Şablondan gelip hiç değiştirilmemiş talimat, şablonun yeni sürümüne geçer
+function guncelTalimat(t) {
+  for (const [id, eskiler] of Object.entries(ESKI_TALIMATLAR)) {
+    const i = eskiler.indexOf(t);
+    if (i < 0) continue;
+    const s = sablonBul(id);
+    return (i === 1 ? s.en : s.tr).talimat;
+  }
+  return t;
+}
 
 export function varsayilanSirket(dil = 'tr') {
   const d = dil === 'en' ? 'en' : 'tr';
@@ -174,7 +185,7 @@ function ajanNormalle(a, mevcutKodlar, doluMasalar) {
     unvan: metin(a.unvan, 80).trim(),
     alanlar: alanNormalle(a.alanlar),
     cagri: metin(a.cagri, 600).trim(),
-    talimat: metin(a.talimat, 20000),
+    talimat: guncelTalimat(metin(a.talimat, 20000)),
     kurallar: Array.isArray(a.kurallar) ? a.kurallar.map((k) => metin(k, 600).trim()).filter(Boolean).slice(0, 40) : [],
     skiller: Array.isArray(a.skiller) ? [...new Set(a.skiller.filter((s) => typeof s === 'string'))].slice(0, 30) : [],
     model: MODELLER.includes(a.model) ? a.model : '',
