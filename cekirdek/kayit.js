@@ -93,6 +93,8 @@ function kisiAdi(sirket, ...adaylar) {
 }
 
 // Claude Code olayından deftere yazılacak kaydı çıkarır. Yazılmayacaksa null döner.
+const pastedSoy = (m) => String(m || '').replace(/<\/?pasted_content[^>]*>/g, '').trim();
+
 // Motorun kendi ürettiği istekler (arka plan görev bildirimi, sistem notu, komut çıktısı) sahibin isteği sayılmaz
 export const sistemIstegiMi = (m) => /^\s*(<(task-notification|system-reminder|command-|local-command|bash-|user-memory|ide_|agent-message|teammate-message)|\[Subagent )/i.test(String(m || ''));
 
@@ -102,7 +104,8 @@ export function olaydanKayit(ev, sirket) {
   const girdi = ev.tool_input && typeof ev.tool_input === 'object' ? ev.tool_input : {};
   switch (ev.hook_event_name) {
     case 'UserPromptSubmit': {
-      const m = String(ev.prompt || '').trim();
+      // çok satırlı yapıştırma sarmalı (<pasted_content id=…>) deftere girmez
+      const m = pastedSoy(ev.prompt);
       if (alt || !m || m.startsWith('/') || sistemIstegiMi(m)) return null;
       return { tur: 'istek', metin: m };
     }
@@ -133,7 +136,7 @@ export function durumCikar(kayitlar) {
   for (const k of kayitlar) {
     // eski sürümde deftere girmiş sistem istekleri atlanır
     if (k.tur === 'istek' && !sistemIstegiMi(k.metin)) {
-      acik = { z: k.z, istek: k.metin, sonuc: '', onceki: '', sonucZ: 0 };
+      acik = { z: k.z, istek: pastedSoy(k.metin), sonuc: '', onceki: '', sonucZ: 0 };
       istekler.push(acik);
     } else if (k.tur === 'sonuc' && acik) {
       // Takım modunda şef aynı istek için birkaç kez söz alır: son iki söz tutulur

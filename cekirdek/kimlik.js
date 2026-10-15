@@ -93,3 +93,35 @@ export function ccRenk(hex) {
   }
   return en;
 }
+
+// Rastgele isimler: her ofis ve kat kendi ekibini benzersiz adlarla kurar (her katta "Atlas" olmasın)
+const ISIMLER = {
+  tr: {
+    kadin: ['Ada', 'Defne', 'Elif', 'Zeynep', 'Ece', 'Nehir', 'Lara', 'Duru', 'İpek', 'Asya', 'Derin', 'Mira', 'Selin', 'Melis', 'Irmak', 'Naz', 'Ela', 'Su', 'Yağmur', 'Bade', 'Ceren', 'Damla', 'Ezgi', 'Gizem', 'Hazal', 'Işıl', 'Lina', 'Nil', 'Pelin', 'Sena', 'Tuana', 'Zehra', 'Ayla', 'Begüm', 'Deniz', 'Eylül'],
+    erkek: ['Atlas', 'Kaan', 'Mert', 'Efe', 'Arda', 'Bora', 'Can', 'Deniz', 'Emir', 'Kerem', 'Tolga', 'Umut', 'Yiğit', 'Alp', 'Baran', 'Cem', 'Doruk', 'Eren', 'Göktuğ', 'Kuzey', 'Onur', 'Ozan', 'Poyraz', 'Rüzgar', 'Selim', 'Tuna', 'Utku', 'Volkan', 'Yusuf', 'Barış', 'Çınar', 'Demir', 'Egemen', 'Kayra', 'Oğuz', 'Sarp'],
+  },
+  en: {
+    kadin: ['Ada', 'Maya', 'Nora', 'Ivy', 'Luna', 'Iris', 'Zoe', 'Ella', 'Mia', 'Aria', 'Clara', 'Eva', 'Hazel', 'Jade', 'Lena', 'Nina', 'Ruby', 'Sara', 'Stella', 'Vera', 'Willa', 'Alice', 'Grace', 'Lily'],
+    erkek: ['Atlas', 'Leo', 'Max', 'Noah', 'Owen', 'Eli', 'Finn', 'Hugo', 'Jack', 'Kai', 'Liam', 'Milo', 'Nate', 'Oscar', 'Ryan', 'Sam', 'Theo', 'Victor', 'Ezra', 'Felix', 'Jonah', 'Miles', 'Reed', 'Silas'],
+  },
+};
+const sadeAd = (s) => String(s || '').trim().toLocaleLowerCase('tr');
+
+// kullanilan: kullanılan adlar (küçük harf). tohum verilirse aynı tohum aynı adı verir (taşıma için kararlı)
+export function rastgeleAd(dil = 'tr', kullanilan = new Set(), { kadin = null, tohum = null } = {}) {
+  const havuz = ISIMLER[dil === 'en' ? 'en' : 'tr'];
+  const cins = kadin === null ? (tohum === null ? Math.random() < 0.5 : karma(tohum) % 2 === 0) : kadin;
+  const liste = (cins ? havuz.kadin : havuz.erkek).filter((a) => !kullanilan.has(sadeAd(a)));
+  const yedek = [...havuz.kadin, ...havuz.erkek].filter((a) => !kullanilan.has(sadeAd(a)));
+  const aday = liste.length ? liste : yedek;
+  if (!aday.length) return { ad: (cins ? havuz.kadin : havuz.erkek)[0] + ' ' + (kullanilan.size + 1), kadin: cins };
+  const i = tohum === null ? Math.floor(Math.random() * aday.length) : karma(String(tohum) + 'ad') % aday.length;
+  return { ad: aday[i], kadin: liste.length ? cins : havuz.kadin.includes(aday[i]) };
+}
+
+// Görünüşü cinsiyete uydurur: kadınlarda sakal yok, saç uzun ya da topuz
+export function gorunusCinsiyet(g, kadin) {
+  const h = karma(JSON.stringify(g));
+  if (kadin) return { ...g, sakal: false, stil: ['uzun', 'topuz', 'kivircik'][h % 3] };
+  return { ...g, stil: g.stil === 'uzun' || g.stil === 'topuz' ? 'kisa' : g.stil };
+}

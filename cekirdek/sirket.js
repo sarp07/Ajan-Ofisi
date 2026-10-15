@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { benzersizKod, gorunusUret, RENKLER, ESYALAR, karma } from './kimlik.js';
+import { benzersizKod, gorunusUret, RENKLER, ESYALAR, karma, rastgeleAd, gorunusCinsiyet } from './kimlik.js';
 import { SEF_TALIMAT, BASLANGIC_KURALLARI, sablonBul, ESKI_TALIMATLAR } from './sablonlar.js';
 
 export const MASA_SAYISI = 10; // şefin masası hariç
@@ -319,6 +319,21 @@ export function normalle(ham) {
   }
   const projeKimlik = new Set();
   const projeler = hamProjeler.map((p) => projeNormalle(p, projeKimlik, sefSablon));
+  // her katın şefi farklı bir ad taşır: aynı adı alan (ör. hepsi varsayılan "Atlas") şefe katına bağlı kalıcı bir ad verilir
+  {
+    const sade = (x) => String(x || '').trim().toLocaleLowerCase('tr');
+    const kullanilan = new Set([sade(beyinNormalle(beyin, v.dil).ad)]);
+    for (const p of projeler) for (const a of p.ajanlar) kullanilan.add(sade(a.ad));
+    const sefler = new Set();
+    for (const p of projeler) {
+      if (p.tur === 'kisisel') continue;
+      if (sefler.has(sade(p.sef.ad)) || sade(p.sef.ad) === [...kullanilan][0]) {
+        const r = rastgeleAd(v.dil, new Set([...kullanilan, ...sefler]), { tohum: p.id });
+        p.sef = { ...p.sef, ad: r.ad, gorunus: gorunusCinsiyet(gorunusUret(p.id + r.ad), r.kadin) };
+      }
+      sefler.add(sade(p.sef.ad));
+    }
+  }
   // eski sürümde son proje klasör yoluyla tutuluyordu
   const son = projeler.find((p) => p.id === s.sonProje) || projeler.find((p) => p.klasor && p.klasor === s.sonProje);
   return {
@@ -410,6 +425,17 @@ export class SirketDeposu {
     return id;
   }
 
+  // Şirkette kullanılan bütün adlar (küçük harf): beyin, şefler ve bütün katların ekipleri
+  kullanilanAdlar() {
+    const sade = (x) => String(x || '').trim().toLocaleLowerCase('tr');
+    const k = new Set([sade(this.veri.beyin.ad)]);
+    for (const p of this.veri.projeler) {
+      if (p.tur !== 'kisisel') k.add(sade(p.sef.ad));
+      for (const a of p.ajanlar) k.add(sade(a.ad));
+    }
+    return k;
+  }
+
   ajanKaydet(tanim, projeId) {
     const id = this.katId(projeId);
     const liste = this.proje(id).ajanlar.slice();
@@ -462,11 +488,14 @@ export class SirketDeposu {
     this.guncelle({ projeler: this.veri.projeler.filter((p) => p.id !== id), sonProje: this.veri.sonProje === id ? null : this.veri.sonProje });
   }
 
-  sablondanEkle(sablonId, projeId) {
+  sablondanEkle(sablonId, projeId, { ad: istenen = '' } = {}) {
     const s = sablonBul(sablonId);
     if (!s) throw new Error('Şablon bulunamadı');
     const d = s[this.veri.dil] || s.tr;
-    return this.ajanKaydet({ ad: d.ad, unvan: d.unvan, alanlar: d.alanlar, cagri: d.cagri, talimat: d.talimat, renk: s.renk, gorunus: s.gorunus, esya: s.esya }, projeId);
+    // şablonun adı yerine şirkette kullanılmayan rastgele bir ad (cinsiyet şablonun görünüşüne uyar)
+    const kadin = ['uzun', 'topuz'].includes(s.gorunus && s.gorunus.stil);
+    const ad = istenen || rastgeleAd(this.veri.dil, this.kullanilanAdlar(), { kadin }).ad;
+    return this.ajanKaydet({ ad, unvan: d.unvan, alanlar: d.alanlar, cagri: d.cagri, talimat: d.talimat, renk: s.renk, gorunus: s.gorunus, esya: s.esya }, projeId);
   }
 
   dilDegistir(dil) {

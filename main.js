@@ -27,7 +27,7 @@ import { sablonBul } from './cekirdek/sablonlar.js';
 import { ODA_SABLONLARI, odaSablonu } from './cekirdek/odalar.js';
 import { TarayiciOdasi } from './cekirdek/tarayici.js';
 import { tarayiciAraclari, ONAYSIZ_ARACLAR, ONAYLI_ARACLAR } from './cekirdek/tarayici-araclari.js';
-import { sade } from './cekirdek/kimlik.js';
+import { sade, rastgeleAd } from './cekirdek/kimlik.js';
 import { Oturum } from './cekirdek/oturum.js';
 import { SABLONLAR } from './cekirdek/sablonlar.js';
 import * as taslak from './cekirdek/taslak.js';
@@ -695,7 +695,10 @@ const beyinIslemleri = {
       const sablon = u.sablon ? sablonBul(String(u.sablon)) : null;
       const taban = sablon ? { ...(sablon[depo.veri.dil] || sablon.tr), renk: sablon.renk, gorunus: sablon.gorunus, esya: sablon.esya } : {};
       const mevcut = depo.proje(katId).ajanlar.find((a) => sade(a.ad) === sade(u.ad));
-      const tanim = { ...taban, ad: String(u.ad) };
+      // başka katta ya da beyinde aynı ad varsa yeni üyeye rastgele, benzersiz bir ad verilir
+      let ad = String(u.ad);
+      if (!mevcut && depo.kullanilanAdlar().has(String(u.ad).trim().toLocaleLowerCase('tr'))) ad = rastgeleAd(depo.veri.dil, depo.kullanilanAdlar(), { kadin: !!(taban.gorunus && ['uzun', 'topuz'].includes(taban.gorunus.stil)) }).ad;
+      const tanim = { ...taban, ad };
       for (const alan of ['unvan', 'cagri', 'talimat']) if (u[alan]) tanim[alan] = String(u[alan]);
       if (Array.isArray(u.alanlar) && u.alanlar.length) tanim.alanlar = u.alanlar.map(String);
       depo.ajanKaydet(mevcut ? { ...tanim, id: mevcut.id } : tanim, katId);
@@ -2570,6 +2573,7 @@ async function baglantiIzle() {
   if (simdi !== cevrimici) {
     cevrimici = simdi;
     gonder('baglanti', { cevrimici });
+    if (cevrimici && guncelleyici) guncelleyici.tazele(60000);
   }
   if (cevrimici) onerilenSkilleriKur();
   setTimeout(baglantiIzle, cevrimici ? 10000 : 3000);
@@ -2641,6 +2645,8 @@ function pencereAc() {
     },
   });
   pencere.once('ready-to-show', () => pencere.show());
+  // öne gelince güncellemeye yeniden bakılır (uzun süre açık kalan uygulama yeni sürümü kaçırmasın)
+  pencere.on('focus', () => guncelleyici && guncelleyici.tazele());
   pencere.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };

@@ -7,7 +7,9 @@ import electronUpdater from 'electron-updater';
 import { notMetni } from './surum-notu.js';
 
 const { autoUpdater } = electronUpdater;
-const ARALIK = 6 * 60 * 60 * 1000; // 6 saat
+const ARALIK = 30 * 60 * 1000; // 30 dakikada bir; ayrıca pencere öne gelince ve internet dönünce bakılır
+const TAZE = 10 * 60 * 1000; // odakta en çok 10 dakikada bir
+const YENIDEN = 5 * 60 * 1000; // sürüm dosyaları henüz yüklenmediyse ya da internet yoksa 5 dakika sonra yeniden
 const ERTELE = 24 * 60 * 60 * 1000; // "sonra" denince 1 gün sorulmaz
 
 // Güncelleme hatasını sahibin anlayacağı bir koda çevirir. Ham ileti yine saklanır (ayrıntı için).
@@ -116,12 +118,25 @@ export class Guncelleyici {
   async kontrol() {
     if (!this.app.isPackaged) return { ...this.durum, asama: 'gelistirme' };
     if (this.durum.asama === 'iniyor' || this.durum.asama === 'indi') return { ...this.durum };
+    this.sonKontrol = Date.now();
     try {
       await autoUpdater.checkForUpdates();
     } catch (e) {
       this.ayarla(hataDurumu(e));
     }
+    // yayın yeni çıkmış (dosyalar yükleniyor) ya da internet yoksa kısa süre sonra yeniden dene
+    if (this.durum.asama === 'hata' && ['hazirlaniyor', 'baglanti'].includes(this.durum.hataKod)) {
+      clearTimeout(this.yeniden);
+      this.yeniden = setTimeout(() => this.kontrol(), YENIDEN);
+    }
     return { ...this.durum };
+  }
+
+  // Pencere öne gelince ya da internet dönünce: son kontrol eskiyse yeniden bak (uygulamayı kapatıp açmaya gerek kalmaz)
+  tazele(enAz = TAZE) {
+    if (!this.zaman) return;
+    if (Date.now() - (this.sonKontrol || 0) < enAz) return;
+    this.kontrol();
   }
 
   async indir() {

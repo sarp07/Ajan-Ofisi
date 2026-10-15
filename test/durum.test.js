@@ -45,9 +45,10 @@ const pr = depo.projeKaydet({ klasor: path.join(tmp, 'p1') });
 depo.guncelle({ sonProje: pr.id });
 const ekip = () => depo.proje(pr.id).ajanlar;
 assert.equal(ekip().length, 0, 'yeni kat boş başlar');
-const kaan = depo.sablondanEkle('backend');
-depo.sablondanEkle('seo');
-depo.sablondanEkle('frontend');
+const kaan = depo.sablondanEkle('backend', undefined, { ad: 'Kaan' });
+const rastgele = depo.sablondanEkle('frontend');
+assert.ok(rastgele.ad && !['kaan', 'atlas', 'beyin'].includes(rastgele.ad.toLocaleLowerCase('tr')), 'şablondan gelen üye rastgele, benzersiz ad alır');
+depo.sablondanEkle('seo', undefined, { ad: 'Mert' });
 assert.equal(kaan.id, 'kaan');
 assert.deepEqual(ekip().map((a) => a.masa), [0, 1, 2]);
 const ozel = depo.ajanKaydet({ ad: 'Çeviri Uzmanı', unvan: 'Çevirmen', alanlar: 'İngilizce, Almanca', talimat: 'Çevir.' });
@@ -99,7 +100,9 @@ const gocVeri = normalle({ surum: 1, kurulumBitti: true, sef: { ad: 'Mahmut' }, 
 assert.equal(gocVeri.beyin.ad, 'Mahmut');
 assert.equal(gocVeri.ajanlar.length, 0);
 assert.deepEqual(gocVeri.projeler.map((p) => p.ajanlar.map((a) => a.ad)), [['Kerem'], ['Kerem']]);
-assert.deepEqual(gocVeri.projeler.map((p) => p.sef.ad), ['Atlas', 'Atlas'], 'kat şefi beyinle aynı adı taşımaz');
+assert.equal(gocVeri.projeler[0].sef.ad, 'Atlas', 'kat şefi beyinle aynı adı taşımaz');
+assert.notEqual(gocVeri.projeler[1].sef.ad, 'Atlas', 'her katın şefi ayrı ad taşır');
+assert.deepEqual(normalle(gocVeri).projeler.map((p) => p.sef.ad), gocVeri.projeler.map((p) => p.sef.ad), 'verilen ad kalıcıdır');
 assert.equal(normalle(gocVeri).projeler[0].ajanlar.length, 1, 'taşıma bir kez yapılır');
 // projesi olmayan eski veri: ekip havuzda bekler, ilk kata taşınır
 fs.mkdirSync(path.join(tmp, 'havuz'), { recursive: true });
@@ -360,7 +363,7 @@ const fain = pd.projeKaydet({
   test: { komut: 'npm test', adres: 'https://staging.fainera.com', sorumlu: 'cem', zorunlu: true },
   notlar: 'Canlıya ben çıkarım.',
 });
-pd.sablondanEkle('qa', fain.id);
+pd.sablondanEkle('qa', fain.id, { ad: 'Cem' });
 assert.match(fain.id, /^[a-z0-9]{10}$/);
 assert.deepEqual(fain.alanAdlari, ['fainera.com', 'fee.fainera.com']);
 assert.deepEqual(fain.hesaplar.map((h) => [h.platform, h.ad]), [['instagram', '@fainera'], ['diger', 'panel']]);
@@ -553,5 +556,6 @@ assert.equal(onayKomutu('onay 12345'), null);
   assert.match(testEnv, /STRIPE_SECRET_KEY=sk_test_2/, 'teste özel değer');
 }
 
+assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<pasted_content id="5e41">[Mahmut] Atlas, iş</pasted_content>' }).metin, '[Mahmut] Atlas, iş', 'yapıştırma sarmalı deftere girmez');
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');
