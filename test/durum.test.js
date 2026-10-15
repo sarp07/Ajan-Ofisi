@@ -20,6 +20,7 @@ import { KayitDefteri, olaydanKayit, devirOzeti, durumCikar } from '../cekirdek/
 import { projeMetni } from '../cekirdek/derle.js';
 import { altAjanIzle, altAjanKarari } from '../cekirdek/sinir.js';
 import { onayKomutu } from '../cekirdek/onay-komutu.js';
+import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, envBirlestir, veriDuzelt } from '../cekirdek/ortam.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ofis-test-'));
 
@@ -501,6 +502,55 @@ assert.equal(onayKomutu('onay 12345'), null);
   assert.ok(metin.includes('- web: /k/web') && metin.includes('/k/api'), 'talimatta katın depoları listelenir');
   const cx = codexArgumanlari(n, { talimat: 'x', roller: [], kancaKomutu: 'k' }, { klasor: '/k/api', ekKlasorler: ['/k/web'] });
   assert.deepEqual(cx.slice(cx.indexOf('--add-dir'), cx.indexOf('--add-dir') + 2), ['--add-dir', '/k/web'], 'Codex ek depolara erişir');
+}
+
+// ortam değişkenleri: monorepo paketleri ve ayrı repo birim olur, bağlar çözülür, .gitignore korunur
+{
+  const ayr = envAyristir('# yorum\nexport A=1\nB="iki # değil"\nC=uc # yorum\nbozuk satir\n');
+  assert.deepEqual(ayr.map((x) => [x.anahtar, x.deger]), [['A', '1'], ['B', 'iki # değil'], ['C', 'uc']]);
+  assert.equal(ayr[0].yorum, 'yorum');
+  assert.equal(envBirlestir('A=1\n# not\nB=2\n', { B: 'x y', C: '3' }).split('\n').slice(0, 3).join('|'), 'A=1|# not|B="x y"', 'var olan satırlar korunur');
+  const mono = path.join(tmp, 'env-mono');
+  const yaz = (f, m) => (fs.mkdirSync(path.dirname(path.join(mono, f)), { recursive: true }), fs.writeFileSync(path.join(mono, f), m));
+  yaz('package.json', JSON.stringify({ name: 'm', workspaces: ['apps/*'] }));
+  yaz('apps/web/package.json', JSON.stringify({ dependencies: { next: '15' } }));
+  yaz('apps/web/.env.example', 'DATABASE_URL=\nNEXT_PUBLIC_API_URL=\n# Stripe\nSTRIPE_SECRET_KEY=your-key\nSITE_ADI=Hardress\n');
+  yaz('apps/api/package.json', JSON.stringify({ dependencies: { '@nestjs/core': '10' } }));
+  yaz('apps/api/.env.example', 'PORT=\nDATABASE_URL=\n');
+  yaz('apps/ui-kit/package.json', JSON.stringify({ name: 'ui' }));
+  const admin = path.join(tmp, 'env-admin');
+  fs.mkdirSync(admin, { recursive: true });
+  fs.writeFileSync(path.join(admin, '.env'), 'ADMIN_TOKEN=gizli123\n');
+  const depolar = [{ id: 'ana', ad: 'hardress', klasor: mono }, { id: 'd2', ad: 'admin', klasor: admin }];
+  const bl = birimleriBul(depolar);
+  assert.deepEqual(bl.map((b) => b.ad).sort(), ['admin', 'hardress/apps/api', 'hardress/apps/web'], 'kütüphane paketi ve env\'siz monorepo kökü birim olmaz');
+  const web = bl.find((b) => b.yol === 'apps/web');
+  assert.equal(web.cati, 'next');
+  const veri = veriDuzelt({ genel: {}, birimler: {} });
+  const d = Object.fromEntries(birimDurumu(web, veri, bl).map((x) => [x.anahtar, x]));
+  assert.equal(d.DATABASE_URL.durum, 'otomatik');
+  assert.equal(d.NEXT_PUBLIC_API_URL.gorunen, 'http://localhost:${port:api}', 'web, api biriminin portuna bağlanır');
+  assert.equal(d.STRIPE_SECRET_KEY.durum, 'eksik', 'yer tutucu değer sayılmaz');
+  assert.ok(d.STRIPE_SECRET_KEY.gizli);
+  assert.equal(d.SITE_ADI.durum, 'ornek');
+  veri.birimler[web.id] = { degiskenler: { STRIPE_SECRET_KEY: { deger: 'sk_test_1', gizli: true, test: 'sk_test_2' } } };
+  assert.equal(birimDurumu(web, veri, bl).find((x) => x.anahtar === 'STRIPE_SECRET_KEY').gorunen.includes('sk_'), false, 'gizli değer maskelenir');
+  const { execFileSync } = await import('node:child_process');
+  execFileSync('git', ['init', '-q', mono]);
+  const bag = { db: async () => 'postgresql://p:s@localhost:5432/p_h', testDb: async () => 'postgresql://p:s@localhost:5432/p_h_test_env', port: async (ad) => ({ api: 4101, web: 4102 })[ad] || 4199 };
+  const rapor = await dosyalariYaz(bl, depolar, veri, bag, 'gelistirme');
+  const webEnv = fs.readFileSync(path.join(mono, 'apps/web/.env.local'), 'utf8');
+  assert.match(webEnv, /DATABASE_URL=postgresql:\/\/p:s@localhost:5432\/p_h/);
+  assert.match(webEnv, /NEXT_PUBLIC_API_URL=http:\/\/localhost:4101/);
+  assert.match(webEnv, /STRIPE_SECRET_KEY=sk_test_1/);
+  assert.match(fs.readFileSync(path.join(mono, 'apps/api/.env'), 'utf8'), /PORT=4101/);
+  assert.match(fs.readFileSync(path.join(mono, '.gitignore'), 'utf8'), /apps\/web\/\.env\.local/, 'env dosyası git dışı bırakılır');
+  assert.equal(fs.readFileSync(path.join(admin, '.env'), 'utf8'), 'ADMIN_TOKEN=gizli123\n', 'yönetilmeyen dosyaya dokunulmaz');
+  assert.ok(rapor.find((r) => r.birim === 'hardress/apps/web').yazilan >= 3);
+  await dosyalariYaz(bl, depolar, veri, bag, 'test');
+  const testEnv = fs.readFileSync(path.join(mono, 'apps/web/.env.test'), 'utf8');
+  assert.match(testEnv, /p_h_test_env/, 'test profili test veritabanını kullanır');
+  assert.match(testEnv, /STRIPE_SECRET_KEY=sk_test_2/, 'teste özel değer');
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

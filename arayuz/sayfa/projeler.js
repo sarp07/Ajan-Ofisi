@@ -6,6 +6,8 @@ import { katKurAc } from '../katKur.js';
 export const PLATFORMLAR = ['appledev', 'apple', 'playconsole', 'github', 'vercel', 'cloudflare', 'supabase', 'firebase', 'expo', 'google', 'gmail', 'telegram', 'instagram', 'x', 'tiktok', 'youtube', 'linkedin', 'facebook', 'discord', 'diger'];
 export const PLATFORM_ADI = { appledev: 'Apple Developer', apple: 'App Store Connect', playconsole: 'Google Play Console', github: 'GitHub', vercel: 'Vercel', cloudflare: 'Cloudflare', supabase: 'Supabase', firebase: 'Firebase', expo: 'Expo', google: 'Google', gmail: 'Gmail', telegram: 'Telegram', instagram: 'Instagram', x: 'X', tiktok: 'TikTok', youtube: 'YouTube', linkedin: 'LinkedIn', facebook: 'Facebook', discord: 'Discord' };
 
+const CATI_ADI = { next: 'Next.js', vite: 'Vite', expo: 'Expo', astro: 'Astro', nuxt: 'Nuxt', remix: 'Remix', nest: 'NestJS', 'react-native': 'React Native', node: 'Node', python: 'Python', go: 'Go' };
+
 export function neZaman(z, t) {
   if (!z) return '';
   const dk = Math.floor((Date.now() - z) / 60000);
@@ -33,6 +35,8 @@ export function projelerSayfasi({ git }) {
   const ozetler = new Map(); // proje kimliği -> kayıt durumu
   const repolar = new Map(); // proje kimliği -> git ve GitHub durumu
   const seciliDepo = new Map(); // çok depolu katta Git panelinde açık depo
+  let sonSekme = 'genel'; // panelde en son açılan sekme
+  const seciliBirim = new Map(); // proje kimliği -> env panelinde açık birim
 
   async function repoYukle(id) {
     const r = await api.githubRepo(id, seciliDepo.get(id) || '');
@@ -140,7 +144,9 @@ export function projelerSayfasi({ git }) {
     if (!acik) ciz();
   }
 
+  let kapatmaIsi = null;
   function kapat() {
+    if (kapatmaIsi) kapatmaIsi(), (kapatmaIsi = null);
     acik = null;
     cekmece.hidden = true;
     perde.hidden = true;
@@ -455,6 +461,241 @@ export function projelerSayfasi({ git }) {
   }
 
   // ---------- düzenleyici ----------
+
+  // ---------- ortam değişkenleri (env) ----------
+  // Birimler: her repo kökü ve monorepo paketi. Değerler şifreli depoda; gizli olanlar yalnızca göz simgesiyle açılır.
+  // Değişiklik hemen kaydedilir, dosyalara yazma ayrı bir adımdır (veritabanı ve port bağları o an çözülür).
+  function ortamBolumu(projeId, rozetGuncelle) {
+    const t = depo.t;
+    const kap = h('section', { class: 'ortamKap' }, h('p', { class: 'durumSatir' }, h('span', { class: 'donen' }), t('ortam.okunuyor')));
+    let d = null;
+    let yazilmadi = false;
+    let topluAcik = false;
+    const DURUM_SIRA = { eksik: 0, dosyada: 1, ornek: 2, otomatik: 3, genel: 4, kayitli: 5 };
+
+    const yukle = async () => {
+      const r = await api.ortamDurum(projeId);
+      if (!r || r.hata) return doldur(kap, h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 14), (r && r.ayrinti) || hataMetni(r)));
+      d = r;
+      ciz();
+    };
+    const eksikSay = (b) => b.degiskenler.filter((x) => x.durum === 'eksik').length;
+    const degisti = () => {
+      yazilmadi = true;
+      yukle();
+    };
+
+    const yazDugme = (profil) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'dugme kucuk' + (profil === 'gelistirme' ? ' ana' : ''),
+          onclick: async (e) => {
+            const b = e.currentTarget;
+            b.disabled = true;
+            const r = await api.ortamYaz(projeId, profil);
+            b.disabled = false;
+            if (!r || r.hata) return bildir((r && r.ayrinti) || hataMetni(r), true);
+            yazilmadi = false;
+            const yazilan = r.rapor.filter((x) => x.dosya);
+            const hatali = r.rapor.filter((x) => x.hata);
+            if (hatali.length) bildir(hatali.map((x) => `${x.birim}: ${x.hata}`).join(' · '), true);
+            else bildir(yazilan.length ? t('ortam.yazildi', { x: yazilan.map((x) => x.dosya).join(', ') }) : t('ortam.yazilacakYok'));
+            yukle();
+          },
+        },
+        ikon(profil === 'test' ? 'kosu' : 'indir', 14),
+        t(profil === 'test' ? 'ortam.testYaz' : 'ortam.dosyalaraYaz')
+      );
+
+    function satir(birimId, v, genelMi) {
+      const giris = h('input', {
+        type: v.gizli ? 'password' : 'text',
+        class: 'mono',
+        value: v.durum === 'kayitli' || (genelMi && v.durum !== 'eksik') ? (v.gizli ? '' : v.gorunen) : '',
+        placeholder: v.gizli && (v.durum === 'kayitli' || genelMi) ? '••••••••••' : v.durum === 'otomatik' || v.durum === 'ornek' || v.durum === 'genel' ? v.gorunen : v.durum === 'dosyada' ? t('ortam.dosyadaYer') : t('ortam.degerYok'),
+        autocomplete: 'off',
+        spellcheck: false,
+        'aria-label': v.anahtar,
+        onchange: async () => {
+          const deger = giris.value;
+          if (!deger && v.gizli && v.durum === 'kayitli') return; // boş bırakılan gizli alan değeri silmez
+          await api.ortamKoy(projeId, birimId, v.anahtar, deger === '' ? null : { deger });
+          degisti();
+        },
+        onfocus: () => (sonGiris = giris),
+      });
+      let acikGoz = false;
+      const goz = v.gizli && (v.durum === 'kayitli' || genelMi)
+        ? h('button', {
+            type: 'button',
+            class: 'simge kucuk',
+            title: t('ortam.goster'),
+            onclick: async () => {
+              acikGoz = !acikGoz;
+              if (acikGoz) {
+                const r = await api.ortamGoster(projeId, birimId, v.anahtar);
+                giris.type = 'text';
+                giris.value = (r && r.deger) || '';
+              } else {
+                giris.type = 'password';
+                giris.value = '';
+              }
+            },
+          }, ikon('goz', 14))
+        : null;
+      const testAcik = v.testFarkli;
+      const testGiris = h('input', {
+        type: v.gizli ? 'password' : 'text',
+        class: 'mono',
+        placeholder: t('ortam.testYer'),
+        autocomplete: 'off',
+        onchange: async () => {
+          await api.ortamKoy(projeId, birimId, v.anahtar, { test: testGiris.value });
+          degisti();
+        },
+      });
+      const testKap = h('div', { class: 'ortamTest', hidden: !testAcik }, h('span', { class: 'ortamTestEtiket' }, '.env.test'), testGiris);
+      const durumAdi = { kayitli: t('ortam.dKayitli'), genel: t('ortam.dGenel'), otomatik: t('ortam.dOtomatik'), ornek: t('ortam.dOrnek'), dosyada: t('ortam.dDosyada'), eksik: t('ortam.dEksik') }[v.durum] || '';
+      return h(
+        'div',
+        { class: 'ortamSatir', 'data-d': v.durum },
+        h('div', { class: 'ortamAnahtar' }, h('code', null, v.anahtar), v.aciklama ? h('span', { class: 'ortamNot', title: v.aciklama }, v.aciklama) : null),
+        h('div', { class: 'ortamDeger' }, h('div', { class: 'ortamGiris' }, giris, goz), testKap),
+        h('span', { class: 'ortamRozet', 'data-d': v.durum }, durumAdi),
+        h(
+          'div',
+          { class: 'ortamIslem' },
+          h('button', {
+            type: 'button',
+            class: 'simge kucuk' + (v.gizli ? ' secili' : ''),
+            title: t(v.gizli ? 'ortam.gizliKapat' : 'ortam.gizliYap'),
+            'aria-pressed': String(!!v.gizli),
+            onclick: async () => {
+              await api.ortamKoy(projeId, birimId, v.anahtar, { gizli: !v.gizli, ...(v.durum === 'kayitli' || genelMi ? {} : { deger: '' }) });
+              degisti();
+            },
+          }, ikon('kasa', 14)),
+          h('button', { type: 'button', class: 'simge kucuk' + (testAcik ? ' secili' : ''), title: t('ortam.testFarkli'), onclick: () => (testKap.hidden = !testKap.hidden, testKap.hidden || testGiris.focus()) }, ikon('kosu', 14)),
+          v.durum === 'kayitli' || genelMi
+            ? h('button', { type: 'button', class: 'simge kucuk', title: t('genel.kaldir'), onclick: async () => (await api.ortamKoy(projeId, birimId, v.anahtar, null), degisti()) }, ikon('cop', 14))
+            : h('span', { class: 'simgeYer' })
+        )
+      );
+    }
+
+    let sonGiris = null;
+    function ciz() {
+      if (!d) return;
+      const birimler = d.birimler;
+      const toplam = birimler.reduce((n, b) => n + b.degiskenler.length, 0);
+      const eksik = birimler.reduce((n, b) => n + eksikSay(b), 0);
+      rozetGuncelle(eksik);
+      let secili = seciliBirim.get(projeId);
+      if (secili !== 'genel' && !birimler.some((b) => b.id === secili)) secili = birimler.length ? birimler[0].id : 'genel';
+      seciliBirim.set(projeId, secili);
+      const b = birimler.find((x) => x.id === secili);
+      const iceAktarilabilir = birimler.reduce((n, x) => n + x.iceAktarilabilir, 0);
+
+      const birimCip = (id, ad, alt, eks) =>
+        h(
+          'button',
+          { type: 'button', role: 'tab', 'aria-selected': String(secili === id), class: 'birimCip' + (secili === id ? ' secili' : ''), onclick: () => (seciliBirim.set(projeId, id), ciz()) },
+          h('span', { class: 'birimAd' }, ad),
+          alt ? h('span', { class: 'birimAlt' }, alt) : null,
+          eks ? h('span', { class: 'sayiRozet kotu' }, eks) : null
+        );
+
+      const yeniAnahtar = h('input', { type: 'text', class: 'mono', placeholder: 'STRIPE_SECRET_KEY', maxlength: '120', autocomplete: 'off', spellcheck: false, oninput: () => (yeniAnahtar.value = yeniAnahtar.value.toUpperCase().replace(/[^A-Z0-9_.-]/g, '_')) });
+      const yeniDeger = h('input', { type: 'text', class: 'mono', placeholder: t('ortam.degerYer'), autocomplete: 'off', spellcheck: false, onfocus: () => (sonGiris = yeniDeger) });
+      const ekle = async () => {
+        const a = yeniAnahtar.value.trim();
+        if (!a) return yeniAnahtar.focus();
+        const r = await api.ortamKoy(projeId, secili, a, { deger: yeniDeger.value });
+        if (!r || r.hata) return bildir(r && r.hata === 'anahtar' ? t('ortam.anahtarHata') : (r && r.ayrinti) || hataMetni(r), true);
+        degisti();
+      };
+      yeniDeger.addEventListener('keydown', (e) => e.key === 'Enter' && ekle());
+      yeniAnahtar.addEventListener('keydown', (e) => e.key === 'Enter' && yeniDeger.focus());
+
+      const topluMetin = h('textarea', { class: 'mono', rows: '6', spellcheck: false, placeholder: 'API_URL=https://…\nSTRIPE_SECRET_KEY=sk_live_…' });
+      const toplu = h(
+        'div',
+        { class: 'ortamToplu', hidden: !topluAcik },
+        topluMetin,
+        h('div', { class: 'satirSag' }, h('span', { class: 'alanIpucu' }, t('ortam.topluIpucu')), h('button', { type: 'button', class: 'dugme kucuk', onclick: async () => {
+          const r = await api.ortamYapistir(projeId, secili, topluMetin.value);
+          if (!r || r.hata) return bildir((r && r.ayrinti) || hataMetni(r), true);
+          bildir(t('ortam.topluEklendi', { x: r.adet }));
+          topluAcik = false;
+          degisti();
+        } }, t('genel.ekle')))
+      );
+
+      const bagEkle = (ifade) => {
+        const g = sonGiris && sonGiris.isConnected ? sonGiris : yeniDeger;
+        const i = g.selectionStart ?? g.value.length;
+        g.value = g.value.slice(0, i) + ifade + g.value.slice(g.selectionEnd ?? i);
+        g.focus();
+        g.dispatchEvent(new Event('input'));
+      };
+      const portAdlari = Object.keys(d.portlar || {});
+      const baglar = ['${db}', ...birimler.map((x) => '${port:' + x.kisa + '}'), ...portAdlari.filter((a) => !birimler.some((x) => x.kisa === a)).map((a) => '${port:' + a + '}')];
+
+      const liste = secili === 'genel'
+        ? d.genel.map((v) => satir('genel', { ...v, durum: 'genel' }, true))
+        : b.degiskenler.slice().sort((x, y) => DURUM_SIRA[x.durum] - DURUM_SIRA[y.durum] || x.anahtar.localeCompare(y.anahtar)).map((v) => satir(b.id, v, false));
+
+      const dosyaSec = b
+        ? (() => {
+            const sec = h('select', { 'aria-label': t('ortam.hedefDosya'), onchange: async () => (await api.ortamDosya(projeId, b.id, sec.value === b.varsayilan ? '' : sec.value), degisti()) },
+              [...new Set([b.varsayilan, '.env', '.env.local', '.env.development', '.env.development.local', b.dosya].filter(Boolean))].map((f) => h('option', { value: f }, f + (f === b.varsayilan ? ' · ' + t('ortam.onerilen') : ''))));
+            sec.value = b.dosya || b.varsayilan;
+            return sec;
+          })()
+        : null;
+
+      doldur(
+        kap,
+        h(
+          'div',
+          { class: 'ortamUst' },
+          h('div', { class: 'ortamOzet' }, h('b', null, t('ortam.ozet', { b: birimler.length, d: toplam })), eksik ? h('span', { class: 'kotuYazi' }, ikon('ucgen', 13), t('ortam.eksikSayi', { x: eksik })) : h('span', { class: 'iyiYazi' }, ikon('tik', 13), t('ortam.tamam')), yazilmadi ? h('span', { class: 'uyariYazi' }, t('ortam.yazilmadi')) : null),
+          h('div', { class: 'ortamDugmeler' },
+            iceAktarilabilir ? h('button', { type: 'button', class: 'dugme kucuk', title: t('ortam.iceAktarIpucu'), onclick: async () => {
+              const r = await api.ortamIceAktar(projeId);
+              if (!r || r.hata) return bildir((r && r.ayrinti) || hataMetni(r), true);
+              bildir(t('ortam.iceAktarildi', { x: r.adet }));
+              yukle();
+            } }, ikon('indir', 14), t('ortam.iceAktar', { x: iceAktarilabilir })) : null,
+            yazDugme('test'),
+            yazDugme('gelistirme'))
+        ),
+        d.sifreli ? null : h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 14), t('ortam.sifreYok')),
+        h('div', { class: 'birimSerit', role: 'tablist' },
+          birimCip('genel', t('ortam.genel'), t('ortam.genelAlt'), 0),
+          birimler.map((x) => birimCip(x.id, x.ad, x.cati ? CATI_ADI[x.cati] || x.cati : '', eksikSay(x)))),
+        b
+          ? h('div', { class: 'birimBilgi' },
+              h('span', null, ikon('klasor', 13), h('code', null, b.yol === '.' ? b.depo + '/' : b.depo + '/' + b.yol)),
+              b.ornekDosya.length ? h('span', null, ikon('dosya', 13), t('ortam.ornekten', { x: b.ornekDosya.join(', ') })) : h('span', { class: 'sonukYazi' }, t('ortam.ornekYok')),
+              h('label', { class: 'birimDosya' }, h('span', null, t('ortam.hedefDosya')), dosyaSec))
+          : h('p', { class: 'alanIpucu' }, t('ortam.genelIpucu')),
+        h('div', { class: 'ortamTablo' },
+          h('div', { class: 'ortamBaslik' }, h('span', null, t('ortam.anahtar')), h('span', null, t('ortam.deger')), h('span', null, t('ortam.durum')), h('span', null)),
+          liste.length ? liste : h('p', { class: 'bosNot' }, t(secili === 'genel' ? 'ortam.genelBos' : 'ortam.birimBos')),
+          h('div', { class: 'ortamSatir yeni' }, yeniAnahtar, h('div', { class: 'ortamDeger' }, yeniDeger), h('button', { type: 'button', class: 'dugme kucuk', onclick: ekle }, ikon('arti', 14), t('genel.ekle')), h('button', { type: 'button', class: 'simge kucuk', title: t('ortam.toplu'), onclick: () => ((topluAcik = !topluAcik), (toplu.hidden = !topluAcik), topluAcik && topluMetin.focus()) }, ikon('kopya', 14)))
+        ),
+        toplu,
+        h('div', { class: 'bagSerit' }, h('span', { class: 'alanIpucu' }, t('ortam.baglar')), baglar.map((x) => h('button', { type: 'button', class: 'cip sade mono', onmousedown: (e) => e.preventDefault(), onclick: () => bagEkle(x) }, x)))
+      );
+    }
+    yukle();
+    const dinleyici = api.ortamDinle((v) => v && v.projeId === projeId && kap.isConnected && yukle());
+    return { kap, yukle, birak: () => typeof dinleyici === 'function' && dinleyici() };
+  }
+
   function ac(kayit) {
     const t = depo.t;
     const s = depo.sirket;
@@ -674,24 +915,52 @@ export function projelerSayfasi({ git }) {
       kapat();
     };
 
-    doldur(
-      cekmece,
-      h('header', { class: 'cekmeceBas' }, h('span', { class: 'projeSimge buyuk' }, ikon('klasor', 30)), h('div', null, baslik, h('p', null, t(yeni ? 'proje.yeniAciklama' : 'proje.duzenAciklama', { x: s.sef.ad }))), h('button', { type: 'button', class: 'simge', onclick: kapat, 'aria-label': t('genel.kapat') }, ikon('kapat', 18))),
+    // ---------- sekmeli düzen ----------
+    // Sol: bölümler (rozetli). Sağ: yalnızca seçili bölüm. Kaydet ve Vazgeç form alanları içindir;
+    // depolar, Git ve ortam değişkenleri anında kaydedilir.
+    const genelBolum = [
       h(
-        'div',
-        { class: 'cekmeceGovde' },
-        h(
-          'section',
-          { class: 'formBolum' },
-          h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('proje.klasor')), h('div', { class: 'klasorSatir' }, yolGoster, h('button', { type: 'button', class: 'dugme', onclick: klasorSec }, ikon('klasor', 15), t(taslak.klasor ? 'proje.klasorDegistir' : 'proje.klasorSec'))), h('span', { class: 'alanIpucu' }, t('proje.klasorIpucu'))),
-          alan(t('proje.ad'), adGiris),
-          alan(t('proje.aciklamaEtiket'), aciklamaGiris, t('proje.aciklamaIpucu', { x: s.sef.ad })),
-          h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('proje.alanAdlari')), alanGiris, h('span', { class: 'alanIpucu' }, t('proje.alanIpucu')))
-        ),
-        yeni ? null : depolarBolumu(taslak),
-        yeni ? null : gitBolumu(taslak.id),
+        'section',
+        { class: 'formBolum' },
+        h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('proje.klasor')), h('div', { class: 'klasorSatir' }, yolGoster, h('button', { type: 'button', class: 'dugme', onclick: klasorSec }, ikon('klasor', 15), t(taslak.klasor ? 'proje.klasorDegistir' : 'proje.klasorSec'))), h('span', { class: 'alanIpucu' }, t('proje.klasorIpucu'))),
+        alan(t('proje.ad'), adGiris),
+        alan(t('proje.aciklamaEtiket'), aciklamaGiris, t('proje.aciklamaIpucu', { x: s.sef.ad })),
+        h('div', { class: 'alan' }, h('span', { class: 'alanEtiket' }, t('proje.alanAdlari')), alanGiris, h('span', { class: 'alanIpucu' }, t('proje.alanIpucu')))
+      ),
+      yeni ? null : h('section', { class: 'formBolum tehlikeBolge' }, h('h3', null, t('proje.tehlike')), h('p', { class: 'alanIpucu' }, t('proje.tehlikeIpucu')), silKap),
+    ];
+    const rozetler = new Map();
+    const rozet = (id) => {
+      const r = h('span', { class: 'sayiRozet', hidden: true });
+      rozetler.set(id, r);
+      return r;
+    };
+    const rozetKoy = (id, n, tur = '') => {
+      const r = rozetler.get(id);
+      if (!r) return;
+      r.hidden = !n;
+      r.textContent = n || '';
+      r.className = 'sayiRozet' + (tur ? ' ' + tur : '');
+    };
+    let ortamPanel = null;
+    const SEKMELER = [
+      { id: 'genel', ikon: 'ayar', ad: t('proje.sGenel'), ciz: () => genelBolum },
+      !yeni && { id: 'depolar', ikon: 'dal', ad: t('proje.sDepolar'), ciz: () => [depolarBolumu(taslak), gitBolumu(taslak.id)] },
+      !yeni && {
+        id: 'ortam',
+        ikon: 'kasa',
+        ad: t('proje.sOrtam'),
+        ciz: () => {
+          if (ortamPanel) ortamPanel.birak();
+          ortamPanel = ortamBolumu(taslak.id, (n) => rozetKoy('ortam', n, 'kotu'));
+          return [h('header', { class: 'sekmeBas' }, h('h3', null, t('proje.sOrtam')), h('p', null, t('ortam.aciklama'))), ortamPanel.kap];
+        },
+      },
+      { id: 'iletisim', ikon: 'telefon', ad: t('proje.sIletisim'), ciz: () => [
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.hesaplar')), h('p', { class: 'alanIpucu' }, t('proje.hesapIpucu')), hesapKap),
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.kisiler')), h('p', { class: 'alanIpucu' }, t('proje.kisiIpucu', { x: s.beyin ? s.beyin.ad : '' })), kisiKap, h('p', { class: 'alanIpucu' }, t('proje.botIpucu')), botKap),
+      ] },
+      { id: 'test', ikon: 'kosu', ad: t('proje.test'), ciz: () => [
         h(
           'section',
           { class: 'formBolum' },
@@ -701,11 +970,77 @@ export function projelerSayfasi({ git }) {
           alan(t('proje.sorumlu'), sorumluSec),
           h('div', { class: 'alan yatay' }, anahtar(taslak.test.zorunlu, (v) => (taslak.test.zorunlu = v), t('proje.kapi')), h('span', { class: 'alanIpucu' }, t('proje.kapiIpucu', { x: s.sef.ad })))
         ),
+      ] },
+      { id: 'notlar', ikon: 'defter', ad: t('proje.sNotlar'), ciz: () => [
         h('section', { class: 'formBolum' }, h('h3', null, t('proje.notlar')), alan(t('proje.notEtiket', { x: s.sef.ad }), notGiris)),
-        yeni ? null : h('section', { class: 'formBolum' }, h('div', { class: 'bolumBas' }, h('h3', null, ikon('defter', 16), t('defter.baslik')), temizleKap), defterKap)
+        yeni ? null : h('section', { class: 'formBolum' }, h('div', { class: 'bolumBas' }, h('h3', null, ikon('defter', 16), t('defter.baslik')), temizleKap), defterKap),
+      ] },
+    ].filter(Boolean);
+    let sekme = SEKMELER.some((x) => x.id === sonSekme) ? sonSekme : 'genel';
+    const icerik = h('div', { class: 'sekmeIcerik', role: 'tabpanel' });
+    const nav = h('nav', { class: 'sekmeNav', role: 'tablist', 'aria-orientation': 'vertical' });
+    const sekmeCiz = () => {
+      doldur(
+        nav,
+        SEKMELER.map((x) =>
+          h(
+            'button',
+            {
+              type: 'button',
+              role: 'tab',
+              'aria-selected': String(x.id === sekme),
+              class: 'sekmeDugme' + (x.id === sekme ? ' secili' : ''),
+              onclick: () => {
+                if (sekme === x.id) return;
+                sekme = sonSekme = x.id;
+                sekmeCiz();
+              },
+              onkeydown: (e) => {
+                const i = SEKMELER.findIndex((y) => y.id === sekme);
+                const k = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+                if (!k) return;
+                e.preventDefault();
+                sekme = sonSekme = SEKMELER[(i + k + SEKMELER.length) % SEKMELER.length].id;
+                sekmeCiz();
+                nav.querySelector('.secili')?.focus();
+              },
+            },
+            ikon(x.ikon, 16),
+            h('span', null, x.ad),
+            rozetler.get(x.id) || rozet(x.id)
+          )
+        )
+      );
+      doldur(icerik, SEKMELER.find((x) => x.id === sekme).ciz());
+      icerik.scrollTop = 0;
+    };
+    // ortam rozeti panel açılmadan da görünsün
+    if (!yeni)
+      api.ortamDurum(taslak.id).then((r) => r && r.birimler && rozetKoy('ortam', r.birimler.reduce((n, b) => n + b.degiskenler.filter((x) => x.durum === 'eksik').length, 0), 'kotu'));
+    const depoSayi = (taslak.depolar || []).length + 1;
+
+    doldur(
+      cekmece,
+      h(
+        'header',
+        { class: 'cekmeceBas' },
+        h('span', { class: 'projeSimge buyuk' }, ikon('klasor', 30)),
+        h(
+          'div',
+          null,
+          baslik,
+          yeni
+            ? h('p', null, t('proje.yeniAciklama'))
+            : h('div', { class: 'basBilgi' }, h('code', { title: taslak.klasor }, kisaYol(taslak.klasor || '')), depoSayi > 1 ? h('span', { class: 'cip sade' }, t('proje.depoSayi', { x: depoSayi })) : null, depo.oturum.acik && depo.oturum.projeId === taslak.id ? h('span', { class: 'hap', 'data-d': 'calisiyor' }, t('proje.calisiyor')) : null)
+        ),
+        h('button', { type: 'button', class: 'simge', onclick: kapat, 'aria-label': t('genel.kapat') }, ikon('kapat', 18))
       ),
-      h('footer', { class: 'cekmeceAlt' }, silKap, h('div', { class: 'bosluk' }), h('button', { type: 'button', class: 'dugme', onclick: kapat }, t('genel.vazgec')), h('button', { type: 'button', class: 'dugme ana', onclick: kaydet }, t('genel.kaydet')))
+      h('div', { class: 'cekmeceGovde sekmeli' }, nav, icerik),
+      h('footer', { class: 'cekmeceAlt' }, h('span', { class: 'alanIpucu' }, t(yeni ? 'proje.yeniAciklama' : 'proje.duzenAciklama', { x: s.sef.ad })), h('div', { class: 'bosluk' }), h('button', { type: 'button', class: 'dugme', onclick: kapat }, t('genel.vazgec')), h('button', { type: 'button', class: 'dugme ana', onclick: kaydet }, t('genel.kaydet')))
     );
+    sekmeCiz();
+    kapatmaIsi = () => ortamPanel && ortamPanel.birak();
+    cekmece.classList.toggle('genis', !yeni);
     cekmece.hidden = false;
     perde.hidden = false;
     cekmece.scrollTop = 0;
@@ -734,6 +1069,7 @@ export function projelerSayfasi({ git }) {
       }
     },
     gizle() {
+      if (kapatmaIsi) kapatmaIsi(), (kapatmaIsi = null);
       acik = null;
       cekmece.hidden = true;
       perde.hidden = true;

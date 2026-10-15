@@ -39,6 +39,7 @@ import { onayKomutu } from './cekirdek/onay-komutu.js';
 import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
 import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
+import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
 const SINAMA = !!process.env.AJAN_OFIS_EKRAN;
@@ -445,6 +446,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
+  ortamTazele(proje.id);
   depo.projeKaydet(motor === 'claude' ? { id: proje.id, sonOturum: oturumId, sonMotor: 'claude', sonAcilis: Date.now() } : { id: proje.id, sonAcilis: Date.now() });
   depo.guncelle({ sonProje: proje.id });
   gonder('sirket', gorunum());
@@ -1057,6 +1059,83 @@ function ortakIslemleri(projeId) {
   };
 }
 
+// ---------- ortam değişkenleri (env) ----------
+// Her katın değerleri tek bir şifreli kayıtta durur; arayüze gizli değer yalnızca "göster" ile gider.
+const ortamAnahtari = (id) => 'env:' + id;
+function ortamOku(projeId) {
+  try {
+    return veriDuzelt(JSON.parse(anahtarlar.al(ortamAnahtari(projeId)) || 'null'));
+  } catch {
+    return veriDuzelt(null);
+  }
+}
+function ortamKaydet(projeId, veri) {
+  anahtarlar.koy(ortamAnahtari(projeId), JSON.stringify(veriDuzelt(veri)));
+}
+const ortamVarMi = (projeId) => anahtarlar.var(ortamAnahtari(projeId));
+
+function ortamProjesi(projeId) {
+  const p = depo.proje(String(projeId || ''));
+  if (!p || p.tur === 'kisisel') throw new Error('Kat bulunamadı: ' + projeId);
+  return p;
+}
+
+// Birimi adına, kısa adına ya da kimliğine göre bulur; "genel" bütün birimler demektir
+function birimBul(birimler, ad) {
+  const a = String(ad || '').trim().toLowerCase();
+  if (!a || a === 'genel') return null;
+  const b = birimler.find((x) => x.id.toLowerCase() === a || x.ad.toLowerCase() === a || x.kisa === a || x.yol.toLowerCase() === a);
+  if (!b) throw new Error(`Bu katta "${ad}" adlı birim yok. Birimler: ${birimler.map((x) => x.ad).join(', ')}`);
+  return b;
+}
+
+function ortamIslemleri(projeId) {
+  const ops = ortakIslemleri(projeId);
+  const bag = {
+    db: async () => (await ops.db()).adres,
+    testDb: async () => (await ops.testDb('env', 'ac')).adres,
+    port: async (ad) => (await ops.portAyir(ad)).port,
+  };
+  const birimler = () => birimleriBul(projeDepolari(ortamProjesi(projeId)));
+  const yaz = async (profil = 'gelistirme') => {
+    const p = ortamProjesi(projeId);
+    const r = await dosyalariYaz(birimler(), projeDepolari(p), ortamOku(p.id), bag, profil);
+    gonder('ortam', { projeId: p.id });
+    return r;
+  };
+  return {
+    birimler,
+    liste: () => {
+      const v = ortamOku(projeId);
+      const bl = birimler();
+      return {
+        genel: Object.entries(v.genel).map(([anahtar, x]) => ({ anahtar, gizli: x.gizli, gorunen: x.gizli ? '••••••' : x.deger })),
+        birimler: bl.map((b) => ({ birim: b.ad, yol: b.yol, cati: b.cati || null, dosya: (v.birimler[b.id] && v.birimler[b.id].dosya) || varsayilanDosya(b.cati), degiskenler: birimDurumu(b, v, bl).map((d) => ({ anahtar: d.anahtar, durum: d.durum, deger: d.gorunen, aciklama: d.aciklama || undefined })) })),
+      };
+    },
+    koy: async (birimAd, anahtar, deger, gizli) => {
+      if (!anahtarGecerli(anahtar)) throw new Error('Geçersiz değişken adı: ' + anahtar);
+      const v = ortamOku(projeId);
+      const b = birimBul(birimler(), birimAd);
+      const hedef = b ? ((v.birimler[b.id] = v.birimler[b.id] || { degiskenler: {} }).degiskenler) : v.genel;
+      hedef[anahtar] = { ...(hedef[anahtar] || {}), deger: String(deger), gizli: typeof gizli === 'boolean' ? gizli : gizliMi(anahtar) };
+      ortamKaydet(projeId, v);
+      const rapor = await yaz('gelistirme');
+      return { tamam: true, birim: b ? b.ad : 'genel', anahtar, rapor };
+    },
+    yaz,
+    bag,
+  };
+}
+
+// Kat açılırken env dosyaları tazelenir (yalnızca env kullanan katlarda; hata oturumu durdurmaz)
+function ortamTazele(projeId) {
+  if (!ortamVarMi(projeId)) return;
+  ortamIslemleri(projeId)
+    .yaz('gelistirme')
+    .catch((e) => gunluk('ortam', 'tazelenemedi', projeId, String(e.message || e)));
+}
+
 setInterval(() => {
   if (depo) servisler.toparla(depo.veri.projeler, servisBildir).catch((e) => gunluk('servis toparlama', e));
 }, 30000);
@@ -1469,7 +1548,7 @@ const depoOrtami = (id, depoAdi) => {
 function mcpAraclari(kapsam) {
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
   if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -1479,7 +1558,7 @@ const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git b
 function mcpBayraklari(motor, { adres, hedef, beyin }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = [...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -1684,6 +1763,7 @@ function ipcKur() {
     if (katlar.get(String(id))?.oturum.acik) return { hata: 'acik' };
     depo.projeSil(String(id));
     kayit.sil(String(id));
+    if (ortamVarMi(String(id))) anahtarlar.koy(ortamAnahtari(String(id)), ''); // env değerleri de gider
     gonder('sirket', gorunum());
     return { tamam: true };
   });
@@ -1965,6 +2045,105 @@ function ipcKur() {
   });
   h('servis:motorAc', async () => ({ tamam: await servisler.motoruAc() }));
   // ortak Postgres ve port blokları (Servisler sayfası)
+  // ortam değişkenleri (proje paneli)
+  const ortamHata = (e) => ({ hata: 'genel', ayrinti: String(e.message || e).slice(0, 400) });
+  h('ortam:durum', async (id) => {
+    try {
+      const p = ortamProjesi(id);
+      const v = ortamOku(p.id);
+      const bl = birimleriBul(projeDepolari(p));
+      return {
+        tamam: true,
+        sifreli: anahtarlar.kullanilabilir(),
+        genel: Object.entries(v.genel).map(([anahtar, x]) => ({ anahtar, gizli: x.gizli, testFarkli: typeof x.test === 'string', gorunen: x.gizli ? '•'.repeat(10) : x.deger })),
+        birimler: bl.map((b) => ({ id: b.id, ad: b.ad, depo: b.depo, yol: b.yol, cati: b.cati, kisa: b.kisa, dosya: (v.birimler[b.id] && v.birimler[b.id].dosya) || '', varsayilan: varsayilanDosya(b.cati), ornekDosya: [...new Set(b.ornek.map((o) => o.dosya))], mevcutDosya: [...new Set(b.mevcut.map((o) => o.dosya))], iceAktarilabilir: b.mevcut.filter((m) => m.deger && !(v.birimler[b.id] && v.birimler[b.id].degiskenler[m.anahtar])).length, degiskenler: birimDurumu(b, v, bl) })),
+        portlar: p.portlar || {},
+      };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
+  // tek bir gizli değeri gösterir (göz simgesi)
+  h('ortam:goster', (id, birimId, anahtar) => {
+    const v = ortamOku(String(id));
+    const k = birimId === 'genel' ? v.genel[anahtar] : v.birimler[birimId] && v.birimler[birimId].degiskenler[anahtar];
+    return { tamam: true, deger: k ? k.deger : '', test: k && typeof k.test === 'string' ? k.test : null };
+  });
+  // değişken ekle, değiştir ya da sil (deger null: sil)
+  h('ortam:koy', (id, birimId, anahtar, alan) => {
+    try {
+      const p = ortamProjesi(id);
+      if (!anahtarGecerli(anahtar)) return { hata: 'anahtar' };
+      const v = ortamOku(p.id);
+      const hedef = birimId === 'genel' ? v.genel : (v.birimler[birimId] = v.birimler[birimId] || { degiskenler: {} }).degiskenler;
+      if (!alan) delete hedef[anahtar];
+      else {
+        const eski = hedef[anahtar] || {};
+        const yeni = { deger: alan.deger !== undefined ? String(alan.deger) : eski.deger || '', gizli: typeof alan.gizli === 'boolean' ? alan.gizli : eski.gizli ?? gizliMi(anahtar) };
+        const test = alan.test !== undefined ? alan.test : eski.test;
+        if (typeof test === 'string' && test !== '') yeni.test = test;
+        hedef[anahtar] = yeni;
+      }
+      ortamKaydet(p.id, v);
+      return { tamam: true };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
+  // .env metni yapıştırılır: her satır birime eklenir
+  h('ortam:yapistir', (id, birimId, metin) => {
+    try {
+      const p = ortamProjesi(id);
+      const v = ortamOku(p.id);
+      const hedef = birimId === 'genel' ? v.genel : (v.birimler[birimId] = v.birimler[birimId] || { degiskenler: {} }).degiskenler;
+      const satirlar = envAyristir(String(metin || '')).slice(0, 300);
+      for (const x of satirlar) hedef[x.anahtar] = { ...(hedef[x.anahtar] || {}), deger: x.deger, gizli: gizliMi(x.anahtar) };
+      ortamKaydet(p.id, v);
+      return { tamam: true, adet: satirlar.length };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
+  // klasörde duran .env dosyalarındaki değerleri şifreli kayda alır (kayıtlı olanlar ezilmez)
+  h('ortam:iceAktar', (id) => {
+    try {
+      const p = ortamProjesi(id);
+      const v = ortamOku(p.id);
+      let adet = 0;
+      for (const b of birimleriBul(projeDepolari(p))) {
+        const hedef = (v.birimler[b.id] = v.birimler[b.id] || { degiskenler: {} }).degiskenler;
+        for (const m of b.mevcut) {
+          if (!m.deger || hedef[m.anahtar]) continue;
+          hedef[m.anahtar] = { deger: m.deger, gizli: gizliMi(m.anahtar) };
+          adet++;
+        }
+      }
+      ortamKaydet(p.id, v);
+      return { tamam: true, adet };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
+  h('ortam:dosya', (id, birimId, dosya) => {
+    try {
+      const p = ortamProjesi(id);
+      const v = ortamOku(p.id);
+      const b = (v.birimler[birimId] = v.birimler[birimId] || { degiskenler: {} });
+      if (dosya) b.dosya = String(dosya);
+      else delete b.dosya;
+      ortamKaydet(p.id, v);
+      return { tamam: true };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
+  h('ortam:yaz', async (id, profil) => {
+    try {
+      return { tamam: true, rapor: await ortamIslemleri(String(id)).yaz(profil === 'test' ? 'test' : 'gelistirme') };
+    } catch (e) {
+      return ortamHata(e);
+    }
+  });
   h('ortak:durum', async () => {
     try {
       const d = await ortakPg.durum();

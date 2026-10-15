@@ -143,5 +143,13 @@ contextBridge.exposeInMainWorld('ofis', {
   ptyVeri: dinle('pty:veri'),
   ptyCikis: dinle('pty:cikis'),
   skillIlerleme: dinle('skill:ilerleme'),
+  ortamDurum: cagri('ortam:durum'),
+  ortamGoster: cagri('ortam:goster'),
+  ortamKoy: cagri('ortam:koy'),
+  ortamYapistir: cagri('ortam:yapistir'),
+  ortamIceAktar: cagri('ortam:iceAktar'),
+  ortamDosya: cagri('ortam:dosya'),
+  ortamYaz: cagri('ortam:yaz'),
+  ortamDinle: dinle('ortam'),
   kayitDinle: dinle('kayit'),
 });
