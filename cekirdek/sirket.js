@@ -71,6 +71,7 @@ export function varsayilanSirket(dil = 'tr') {
     motor: 'otomatik',
     // özel sohbetlerin son oturumu: "kat:ajan" -> { oturum, motor }. Sürdürmek için.
     ozelOturumlar: {},
+    tasarimOturumlari: {},
     giris: { claude: 'abonelik', codex: 'abonelik', kimi: 'abonelik', gemini: 'abonelik' },
     modeller: { claude: { ...VARSAYILAN_MODELLER.claude }, codex: { ...VARSAYILAN_MODELLER.codex } },
     claudeYolu: '',
@@ -102,11 +103,11 @@ function modellerNormalle(m) {
   };
 }
 
-function ozelNormalle(o) {
+function ozelNormalle(o, desen = /^[a-z0-9]{6,20}:[a-z0-9][a-z0-9-]{0,39}$/) {
   const sonuc = {};
   if (!o || typeof o !== 'object') return sonuc;
   for (const [k, v] of Object.entries(o).slice(0, 200)) {
-    if (!/^[a-z0-9]{6,20}:[a-z0-9][a-z0-9-]{0,39}$/.test(k) || !v || typeof v !== 'object') continue;
+    if (!desen.test(k) || !v || typeof v !== 'object') continue;
     if (typeof v.oturum === 'string' && OTURUM_KIMLIGI.test(v.oturum)) sonuc[k] = { oturum: v.oturum, motor: MOTOR_LISTESI.includes(v.motor) ? v.motor : 'claude' };
   }
   return sonuc;
@@ -366,6 +367,8 @@ export function normalle(ham) {
     izinGecisi: 1,
     motor: MOTOR_SECIMLERI.includes(s.motor) ? s.motor : 'otomatik',
     ozelOturumlar: ozelNormalle(s.ozelOturumlar),
+    // tasarım odasının sürdürülebilir oturumu (kat kimliği → oturum)
+    tasarimOturumlari: ozelNormalle(s.tasarimOturumlari, /^[a-z0-9]{6,20}$/),
     giris: girisNormalle(s.giris),
     modeller: modellerNormalle(s.modeller),
     claudeYolu: metin(s.claudeYolu, 1000),

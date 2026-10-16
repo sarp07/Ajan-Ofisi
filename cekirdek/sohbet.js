@@ -136,7 +136,8 @@ export const ONAY_TUSU = { evet: '\r', hayir: '\x1b' };
 // Klasör güveni: yeni bir klasörde motor önce "bu klasöre güveniyor musun" diye sorar. Bu soru hook olayı üretmez,
 // yalnızca terminalde görünür. Terminal çıktısından tanınır ve konuşma paneline taşınır.
 // Claude Code'da seçili seçenek "Hayır, çık" olduğu için önce aşağı ok, sonra Enter gönderilir.
-const GUVEN_KALIBI = { claude: /yes,itrustthisfolder/, codex: /(doyoutrust|trustthe(files|contents)|allowcodextowork)/ };
+// Claude Code'un eski ve yeni ("Quick safety check") güven ekranı
+const GUVEN_KALIBI = { claude: /yes,itrustthisfolder|quicksafetycheck:isthisaprojectyoucreated/, codex: /(doyoutrust|trustthe(files|contents)|allowcodextowork)/ };
 export const GUVEN_TUSLARI = { claude: ['\x1b[B', '\r'], codex: ['\r'] };
 
 // Terminal çıktısını karşılaştırılabilir hale getirir: renk kodları ve boşluklar atılır (arayüz boşlukları imleç hareketiyle çizer)

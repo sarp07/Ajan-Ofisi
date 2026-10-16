@@ -606,5 +606,31 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.equal(yeni.PATH, [playwrightKlasoru(kl), '/usr/bin'].join(path.delimiter), 'bir kez ve başa eklenir');
 }
 
+// Tasarım odası: designs/0001… klasörleri, sayfalar, güvenli yol, seçici katman, talimat
+{
+  const { tasarimListesi, yeniTasarim, tasarimYolu, seciciEkle, tasarimMetni } = await import('../cekirdek/tasarim.js');
+  const pk = path.join(tmp, 'tasarim-proje');
+  fs.mkdirSync(pk, { recursive: true });
+  assert.deepEqual(tasarimListesi(pk), []);
+  assert.equal(yeniTasarim(pk), '0001');
+  assert.equal(yeniTasarim(pk), '0002');
+  assert.ok(fs.existsSync(path.join(pk, 'designs', '0001', 'assets')), 'assets klasörü açılır');
+  fs.writeFileSync(path.join(pk, 'designs', '0001', 'iletisim.html'), '<p>x</p>');
+  fs.writeFileSync(path.join(pk, 'designs', '0001', 'index.html'), '<p>x</p>');
+  fs.writeFileSync(path.join(pk, 'designs', '0001', 'not.txt'), 'x');
+  fs.mkdirSync(path.join(pk, 'designs', 'eski'));
+  const l = tasarimListesi(pk);
+  assert.deepEqual(l.map((x) => x.id), ['0002', '0001'], 'yeniden eskiye, numarasız klasör yok');
+  assert.deepEqual(l[1].sayfalar.map((x) => x.dosya), ['index.html', 'iletisim.html'], 'ana sayfa önde, yalnızca HTML');
+  assert.equal(tasarimYolu(pk, '/0001/index.html'), path.join(pk, 'designs', '0001', 'index.html'));
+  assert.equal(tasarimYolu(pk, '/../../etc/passwd'), null, 'designs dışına çıkılamaz');
+  assert.equal(tasarimYolu(pk, '0001/../../x'), null);
+  assert.equal(seciciEkle('<html><body><p>a</p></body></html>', 'S'), '<html><body><p>a</p><script>S</script></body></html>');
+  assert.equal(seciciEkle('<p>a</p>', 'S'), '<p>a</p><script>S</script>');
+  const m = tasarimMetni({ dil: 'tr', ad: 'Tasarımcı', proje: { ad: 'Site', klasor: pk }, skiller: [{ id: 'frontend-design', yol: '/s/frontend-design/SKILL.md' }, { id: 'seo-audit', yol: '/s/seo/SKILL.md' }] });
+  assert.ok(m.includes(path.join(pk, 'designs')) && m.includes('frontend-design') && !m.includes('seo-audit'), 'yalnızca tasarım skilleri');
+  assert.ok(tasarimMetni({ dil: 'en', ad: 'Designer', proje: { ad: 'Site', klasor: pk } }).includes('[Design 0001 · page: index.html]'));
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

@@ -8,6 +8,7 @@ import { odaSecici } from '../odaSecici.js';
 import { petek } from '../petek.js';
 import { basHarf, MISAFIR_RENK } from '../../cekirdek/kimlik.js';
 import { neZaman } from './projeler.js';
+import { tasarimAlani } from '../tasarim.js';
 
 const YER = { masa: 'yer.masa', kutuphane: 'yer.kutuphane', kahve: 'yer.kahve', oyun: 'yer.oyun' };
 
@@ -43,6 +44,20 @@ export function ofisSayfasi({ git }) {
   // asansör: binada katlar arası geçiş (▲ ▼ ve kat listesi)
   const asansor = h('nav', { class: 'asansor', hidden: true });
   const sahneKap = h('section', { class: 'sahne' }, tuval, yakinlik, bosKart, asansor, binaPanel);
+  // tasarım odası: sohbet solda, canlı önizleme ortada, öğe denetçisi sağda
+  const tasarimA = tasarimAlani({
+    baslat: () => baslat(),
+    sohbetOner: (metin) => {
+      if (metin) sohbetGiris.value = metin;
+      boyutla();
+      sohbetGiris.focus();
+      if (metin) sohbetGiris.setSelectionRange(metin.length, metin.length);
+    },
+    katlar: () => ofisKatlari(),
+    katSec: (id) => gorunumSec('tasarim:' + id),
+  });
+  tasarimA.kok.hidden = true;
+  sahneKap.append(tasarimA.kok);
   const beyinMi = () => depo.gorunum === 'beyin';
   // özel sohbet: "ozel:<kat>:<ajan>"
   const ozelBilgi = () => {
@@ -53,12 +68,15 @@ export function ofisSayfasi({ git }) {
     return ajan ? { kat, ajan, anahtar: depo.gorunum } : null;
   };
   const ozelMi = () => depo.gorunum.startsWith('ozel:');
+  // tasarım odası: "tasarim:<kat>"
+  const tasarimMi = () => depo.gorunum.startsWith('tasarim:');
+  const tasarimKati = () => (tasarimMi() ? depo.gorunum.slice(8) : null);
   // kişisel kat seçili ve özel sohbete girilmemiş
   const kisiselMi = () => depo.gorunum === 'kat' && (depo.sirket.projeler.find((p) => p.id === depo.sirket.sonProje) || {}).tur === 'kisisel';
   // sahnenin yerine panel gösterilen görünümler
-  const panelMi = () => beyinMi() || ozelMi() || kisiselMi();
+  const panelMi = () => beyinMi() || ozelMi() || kisiselMi() || tasarimMi();
   // konuşmanın karşı tarafı: beyin, özel sohbetteki kişi ya da katın şefi
-  const muhatap = () => (beyinMi() ? depo.sirket.beyin.ad : ozelMi() ? (ozelBilgi() || { ajan: { ad: '' } }).ajan.ad : depo.sirket.sef.ad);
+  const muhatap = () => (beyinMi() ? depo.sirket.beyin.ad : tasarimMi() ? depo.t('tasarim.tasarimci') : ozelMi() ? (ozelBilgi() || { ajan: { ad: '' } }).ajan.ad : depo.sirket.sef.ad);
 
   const dockBas = h('div', { class: 'dockBas' });
   const termKap = h('div', { class: 'termKap' });
@@ -294,7 +312,7 @@ export function ofisSayfasi({ git }) {
   }
 
   const projeBul = (id) => depo.sirket.projeler.find((p) => p.id === id) || null;
-  const etkinProje = () => (beyinMi() || ozelMi() ? null : projeBul(depo.oturum.acik ? depo.oturum.projeId : depo.sirket.sonProje));
+  const etkinProje = () => (beyinMi() || ozelMi() || tasarimMi() ? null : projeBul(depo.oturum.acik ? depo.oturum.projeId : depo.sirket.sonProje));
 
   // Projenin kayıt defterinden "kaldığı yer" bilgisi: başlangıç panelinde gösterilir
   let kaldi = { id: null, durum: null };
@@ -309,6 +327,7 @@ export function ofisSayfasi({ git }) {
   async function baslat(surdur = false) {
     if (beyinMi()) return beyinBaslat();
     if (ozelMi()) return ozelBaslat(surdur === true);
+    if (tasarimMi()) return tasarimBaslat(surdur === true);
     const proje = etkinProje();
     if (!proje) return projeSec(true);
     termKur();
@@ -362,6 +381,25 @@ export function ofisSayfasi({ git }) {
       return;
     }
     term.focus();
+  }
+
+  async function tasarimBaslat(surdur) {
+    const katId = tasarimKati();
+    if (!katId) return;
+    termKur();
+    kullanildi = true;
+    dockCiz(true);
+    sigdirTerm();
+    bagliKat = depo.gorunum;
+    term.reset();
+    const s = await api.oturumBaslat({ tasarim: katId, surdur, sutun: term.cols, satir: term.rows });
+    if (!s || s.hata) {
+      bildir(hataMetni(s), true);
+      kullanildi = false;
+      dockCiz();
+      return;
+    }
+    sohbetGiris.focus();
   }
 
   async function projeSec(sonraBaslat) {
@@ -494,6 +532,21 @@ export function ofisSayfasi({ git }) {
     }
     if (kisiselMi()) {
       doldur(termBos, h('h3', null, tt('kisisel.baslik')), h('p', null, tt('kisisel.dock', { x: depo.sirket.beyin.ad })));
+      return;
+    }
+    if (tasarimMi()) {
+      const kayitli = depo.sirket.tasarimOturumlari && depo.sirket.tasarimOturumlari[tasarimKati()];
+      doldur(
+        termBos,
+        h('h3', null, tt('tasarim.hazir')),
+        h('p', null, tt('tasarim.aciklama')),
+        h(
+          'div',
+          { class: 'satirDugme' },
+          h('button', { type: 'button', class: 'dugme ana buyuk', onclick: () => baslat() }, ikon('firca', 14), tt('tasarim.baslat')),
+          kayitli ? h('button', { type: 'button', class: 'dugme buyuk', onclick: () => baslat(true) }, ikon('yenile', 15), tt('tasarim.surdur')) : null
+        )
+      );
       return;
     }
     if (ozelMi()) {
@@ -664,13 +717,24 @@ export function ofisSayfasi({ git }) {
     const panel = panelMi();
     kok.classList.toggle('beyinModu', panel);
     kok.classList.toggle('ozelModu', ozelMi());
+    kok.classList.toggle('tasarimModu', tasarimMi());
+    // konuşma paneli tasarım odasında sol sütuna taşınır, çıkınca yerine döner
+    if (tasarimMi()) {
+      if (sohbet.parentNode !== tasarimA.sohbetYuva) tasarimA.sohbetYuva.append(sohbet);
+    } else if (sohbet.parentNode !== dockGovde) dockGovde.append(sohbet);
+    tasarimA.kok.hidden = !tasarimMi();
     kok.classList.toggle('kisiselModu', kisiselMi());
     binaPanel.hidden = !panel;
     if (beyin3d && !beyinMi()) beyin3d.gizle();
     tuval.hidden = panel;
     yakinlik.hidden = panel;
     if (panel) bosKart.hidden = true;
-    if (!panel) return;
+    if (!panel) return tasarimA.gizle();
+    if (tasarimMi()) {
+      binaPanel.hidden = true;
+      return tasarimA.goster(tasarimKati());
+    }
+    tasarimA.gizle();
     if (kisiselMi()) return odalarCiz();
     if (ozelMi()) return odaCiz();
     // beyin görünümü: canlı beyin (bir kez kurulur, görünürken çizilir)
@@ -1055,12 +1119,17 @@ export function ofisSayfasi({ git }) {
   }
 
   // ---------- konuşma paneli ----------
-  function sohbetYolla() {
+  async function sohbetYolla() {
     let metin = sohbetGiris.value.trim();
     if (!metin && !bekleyenEkler.length) return;
     if (!depo.oturum.acik || depo.oturum.giris) return bildir(depo.t('sohbet.kapali'), true);
     // ekler mesajın sonunda "[Ek] yol" satırları olarak gider: kişi dosyayı oradan okur, panel çip olarak gösterir
     if (bekleyenEkler.length) metin = (metin || depo.t('oda.eklerBak')) + '\n\n' + bekleyenEkler.map((e) => '[Ek] ' + e.yol).join('\n');
+    // tasarım odasında etkin tasarım, sayfa ve seçili öğe mesajın başına eklenir
+    if (tasarimMi()) {
+      const baglam = await tasarimA.baglamAl();
+      if (baglam) metin = baglam + '\n\n' + metin;
+    }
     api.sohbetYaz(seciliKat(), metin).then((r) => {
       if (r && r.hata) return bildir(hataMetni(r), true);
       sohbetGiris.value = '';
@@ -1194,6 +1263,10 @@ export function ofisSayfasi({ git }) {
       doldur(sohbetListe, h('li', { class: 'sohbetBos odaBos' }, odaBosIcerik(acik)));
       return;
     }
+    if (!liste.length && tasarimMi()) {
+      doldur(sohbetListe, h('li', { class: 'sohbetBos' }, h('p', null, tt(acik ? 'tasarim.sohbetBosAcik' : 'tasarim.sohbetBos'))));
+      return;
+    }
     if (!liste.length) {
       doldur(sohbetListe, h('li', { class: 'sohbetBos' }, h('p', null, tt(acik ? (beyinMi() ? 'sohbet.bosAcikBeyin' : ozelMi() ? 'sohbet.bosAcikOzel' : 'sohbet.bosAcik') : beyinMi() ? 'sohbet.bosBeyin' : ozelMi() ? 'sohbet.bosOzel' : kisiselMi() ? 'sohbet.bosKisisel' : 'sohbet.bos', { x: muhatap() }))));
       return;
@@ -1237,10 +1310,19 @@ export function ofisSayfasi({ git }) {
         // sahibin yazdığı olduğu gibi (ekler çip olarak), şefin ve beynin cevabı biçimli gösterilir
         let govde;
         if (m.kim === 'sen') {
-          const satirlar = m.metin.split('\n');
+          // tasarım odasının bağlam satırları (etkin tasarım, seçili öğe, doğrudan düzenlemeler) çip olarak gösterilir
+          const baglam = [];
+          const satirlar = m.metin.split('\n').filter((x) => {
+            const t_ = /^\[(?:Tasarım|Design) (\d{4}) · (?:sayfa|page): ([^·\]]+?)(?: · (?:cihaz|device): ([^\]]+))?\]$/.exec(x);
+            if (t_) return baglam.push({ simge: 'firca', metin: `${t_[1]} · ${t_[2]}${t_[3] ? ' · ' + t_[3] : ''}` }), false;
+            const o_ = /^\[(?:Seçili öğe|Selected element)\] .*· (?:yol|path): (.+?) · (?:tür|type): \w+$/.exec(x);
+            if (o_) return baglam.push({ simge: 'hedef', metin: o_[1].split(' > ').pop() }), false;
+            if (/^\[(?:Doğrudan düzenlemeler|Direct edits)\]/.test(x)) return baglam.push({ simge: 'kalem', metin: tt('tasarim.duzenlerCip') }), false;
+            return !/^(?:HTML|Stiller|Styles): /.test(x) || !baglam.some((b) => b.simge === 'hedef');
+          });
           const ekler = satirlar.filter((x) => x.startsWith('[Ek] ')).map((x) => x.slice(5));
           const yazi = satirlar.filter((x) => !x.startsWith('[Ek] ')).join('\n').trim();
-          govde = h('div', null, yazi ? h('div', { class: 'mesajMetin' }, yazi) : null, ekler.length ? h('div', { class: 'ekSatir' }, ekler.map((y) => h('button', { type: 'button', class: 'ekCip', onclick: () => ozelMi() && api.odaAc(depo.gorunum, y) }, ikon('dosya', 13), h('span', null, y.split(/[\\/]/).pop())))) : null);
+          govde = h('div', null, baglam.length ? h('div', { class: 'baglamSatir' }, baglam.map((b) => h('span', { class: 'baglamCip' }, ikon(b.simge, 12), h('span', null, b.metin)))) : null, yazi ? h('div', { class: 'mesajMetin' }, yazi) : null, ekler.length ? h('div', { class: 'ekSatir' }, ekler.map((y) => h('button', { type: 'button', class: 'ekCip', onclick: () => ozelMi() && api.odaAc(depo.gorunum, y) }, ikon('dosya', 13), h('span', null, y.split(/[\\/]/).pop())))) : null);
         } else govde = m.tur === 'hata' ? h('div', { class: 'mesajMetin' }, m.metin) : mdMetin(m.metin);
         return h('li', { class: 'mesaj ' + (m.kim === 'sen' ? 'sen' : m.kim === 'iletim' ? 'iletim' : m.tur === 'hata' ? 'hata' : 'sef') }, ust, govde);
       })
@@ -1523,6 +1605,7 @@ export function ofisSayfasi({ git }) {
   let dosyaZ = null;
   dinle('sohbet', () => {
     sohbetCiz();
+    tasarimA.tazele();
     // odadaki kişi yeni bir şey ürettiyse çıktı listesi yenilenir
     if (ozelMi()) {
       clearTimeout(dosyaZ);
@@ -1538,6 +1621,7 @@ export function ofisSayfasi({ git }) {
     sohbetCiz();
   });
   dinle('oturum', () => {
+    tasarimA.tazele();
     katSeritCiz();
     binaCiz();
     sohbetCiz();
@@ -1584,6 +1668,7 @@ export function ofisSayfasi({ git }) {
     goster() {
       sahne.calisiyor = true;
       if (beyin3d && beyinMi()) beyin3d.goster();
+      if (tasarimMi()) tasarimA.goster(tasarimKati());
       if (!depo.oturum.acik) {
         dockCiz();
         kaldiYukle();
@@ -1595,6 +1680,7 @@ export function ofisSayfasi({ git }) {
     },
     gizle() {
       sahne.calisiyor = false;
+      tasarimA.gizle();
       if (beyin3d) beyin3d.gizle();
     },
   };

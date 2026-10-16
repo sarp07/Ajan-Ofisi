@@ -20,6 +20,8 @@ const SAYFALAR = [
   // kişisel alan ofisten ayrı durur; aynı sayfa kişisel katı ve özel odaları gösterir
   ['kisisel', 'kalp', null],
   ['projeler', 'proje', projelerSayfasi],
+  // tasarım odası: ofis sayfasının "tasarim:<kat>" görünümü (sohbetle HTML tasarım, canlı önizleme)
+  ['tasarim', 'firca', null],
   ['ekip', 'ekip', ekipSayfasi],
   ['tarayici', 'dunya', tarayiciSayfasi],
   ['test', 'telefon', testSayfasi],
@@ -80,8 +82,22 @@ async function ofiseDon() {
   } else gorunumSec('beyin');
 }
 
+// Tasarım odası: son bakılan ofis katının tasarımları (kat yoksa önce proje açılır)
+function tasarimAc() {
+  const katlar = depo.sirket.projeler.filter((p) => p.tur !== 'kisisel');
+  if (!katlar.length) {
+    bildir(depo.t('tasarim.katYok'), true);
+    return git('projeler');
+  }
+  const simdiki_ = depo.gorunum.startsWith('tasarim:') ? depo.gorunum.slice(8) : depo.sirket.sonProje;
+  const kat = katlar.find((p) => p.id === simdiki_) || katlar[katlar.length - 1];
+  gorunumSec('tasarim:' + kat.id);
+  git('ofis', undefined, true);
+}
+
 function git(ad, arg, kisiselden) {
   if (ad === 'kisisel') return kisiselAc();
+  if (ad === 'tasarim') return tasarimAc();
   if (ad === 'ofis' && !kisiselden) ofiseDon();
   const icerik = document.getElementById('icerik');
   if (simdiki && simdiki !== ad) {
@@ -109,7 +125,8 @@ function rayCiz() {
     SAYFALAR.map(([ad, simge]) => {
       // ofis ve kişisel aynı sayfayı paylaşır: hangisinin seçili olduğu görünüme göre
       const katta = simdiki === 'ofis' && depo.gorunum === 'kat' && !kisiselGorunum();
-      const secili = ad === 'kisisel' ? simdiki === 'ofis' && kisiselGorunum() : ad === 'ofis' ? simdiki === 'ofis' && !kisiselGorunum() && !katta : ad === 'projeler' ? simdiki === 'projeler' || katta : simdiki === ad;
+      const tasarimda = simdiki === 'ofis' && depo.gorunum.startsWith('tasarim:');
+      const secili = ad === 'tasarim' ? tasarimda : ad === 'kisisel' ? simdiki === 'ofis' && kisiselGorunum() : ad === 'ofis' ? simdiki === 'ofis' && !kisiselGorunum() && !katta && !tasarimda : ad === 'projeler' ? simdiki === 'projeler' || katta : simdiki === ad;
       const tikla = ad === 'ofis' ? () => (gorunumSec('beyin'), git('ofis', undefined, true)) : () => git(ad);
       return h('button', { type: 'button', class: 'rayDugme' + (secili ? ' secili' : ''), onclick: tikla, 'aria-current': secili ? 'page' : null }, ikon(simge, 20), h('span', null, t('gez.' + ad)));
     })

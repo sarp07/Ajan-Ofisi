@@ -107,7 +107,7 @@ async function beyinSesi(liste) {
 }
 
 // Seçili kat: Ofis sayfasında görünen proje ya da beyin. Abonelik girişi açıksa terminal onu gösterir.
-export const seciliKat = () => (depo.gorunum === 'beyin' || depo.gorunum.startsWith('ozel:') ? depo.gorunum : (depo.sirket && depo.sirket.sonProje) || '');
+export const seciliKat = () => (depo.gorunum === 'beyin' || depo.gorunum.startsWith('ozel:') || depo.gorunum.startsWith('tasarim:') ? depo.gorunum : (depo.sirket && depo.sirket.sonProje) || '');
 
 export function gorunumSec(g) {
   if (depo.gorunum === g) return;

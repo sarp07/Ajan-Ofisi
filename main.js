@@ -43,6 +43,7 @@ import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
 import { playwrightKur, playwrightOrtami, PLAYWRIGHT_PAKET } from './cekirdek/playwright.js';
+import { tasarimListesi, yeniTasarim, tasarimYolu, tasarimKoku, gecerliTasarim, seciciEkle, tasarimMetni } from './cekirdek/tasarim.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -75,7 +76,11 @@ let guncelleyici = null;
 let guncellemePenceresi = null;
 let yenilikler = null;
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'ofis', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+// tasarim://<kat>/<0001>/<sayfa>.html: tasarım odasının önizlemesi (kum havuzlu çerçevede açılır)
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'ofis', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'tasarim', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 const gonder = (kanal, veri) => {
   if (pencere && !pencere.isDestroyed()) pencere.webContents.send(kanal, veri);
@@ -109,7 +114,7 @@ function katAl(anahtar) {
 
 // Beynin görünümü: konuşmada ve olaylarda "şef" beynin kendisidir, ekibi yoktur
 const beyinGorunumu = () => ({ ...depo.veri, sef: { ...depo.veri.sef, ad: depo.veri.beyin.ad, unvan: depo.veri.dil === 'en' ? 'Brain' : 'Beyin' }, ajanlar: [], katId: 'beyin' });
-const katGorunum = (k) => (k.anahtar === 'beyin' ? beyinGorunumu() : k.anahtar.startsWith('ozel:') ? ozelGorunumu(k.anahtar) : gorunum(k.anahtar !== 'giris' ? k.anahtar : null));
+const katGorunum = (k) => (k.anahtar === 'beyin' ? beyinGorunumu() : k.anahtar.startsWith('ozel:') ? ozelGorunumu(k.anahtar) : k.anahtar.startsWith('tasarim:') ? tasarimGorunumu(k.anahtar) : gorunum(k.anahtar !== 'giris' ? k.anahtar : null));
 
 function oturumBilgi(k) {
   if (!k) return { acik: false };
@@ -164,6 +169,12 @@ function terminalIzle(k, d) {
   k.duz = (k.duz + duzMetin(d)).slice(-3000);
   if (!guvenSorusuMu(b.motor, k.duz)) return;
   b.guvenSoruldu = true;
+  // tasarım odası: klasörü sahip kat olarak zaten seçti, güven sorusu kendiliğinden onaylanır (tasarımcı yalnızca designs klasörüne yazar)
+  if (b.tasarim) {
+    const tuslar = GUVEN_TUSLARI[b.motor] || ['\r'];
+    tuslar.forEach((t, i) => setTimeout(() => k.oturum.acik && k.oturum.yaz(t), 300 + i * 150));
+    return;
+  }
   k.sohbet.push({ id: 'g' + Date.now().toString(36), z: Date.now(), kim: 'sistem', ad: '', tur: 'onay', arac: 'guven', metin: b.proje || '', acik: true });
   sohbetGonder(k);
 }
@@ -172,7 +183,7 @@ function oturumBitti(k, kod, bilgi) {
   if (bilgi && bilgi.giris) {
     // giriş penceresi kapandı: giriş durumunu yeniden oku
     motorlarYenile().catch(() => {});
-  } else if (bilgi && bilgi.beyin) {
+  } else if (bilgi && (bilgi.beyin || bilgi.tasarim)) {
     oturumKapat(k.durum, bilgi.oturumId);
   } else if (bilgi) {
     oturumKapat(k.durum, bilgi.oturumId);
@@ -444,13 +455,15 @@ function olayGeldi(ev, etiket = '') {
     if (b.projeId) {
       depo.projeKaydet({ id: b.projeId, sonOturum: ev.session_id, sonMotor: b.motor });
       gonder('sirket', gorunum());
+    } else if (b.tasarim) {
+      depo.guncelle({ tasarimOturumlari: { ...depo.veri.tasarimOturumlari, [b.katId]: { oturum: ev.session_id, motor: b.motor } } });
     } else if (b.ozel) {
       depo.guncelle({ ozelOturumlar: { ...depo.veri.ozelOturumlar, [`${b.katId}:${b.ajanId}`]: { oturum: ev.session_id, motor: b.motor } } });
     }
   }
   ev = { ...ev, session_id: etiket };
   mesguliyetIzle(k, ev);
-  beyinOlayi(b.projeId || (b.ozel ? b.katId : 'beyin'), ev);
+  beyinOlayi(b.projeId || (b.ozel || b.tasarim ? b.katId : 'beyin'), ev);
   const kat = katGorunum(k);
   // beynin kayıt defteri yoktur, katların defteri vardır
   if (b.projeId) {
@@ -994,6 +1007,141 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   durumGonder(k, true);
   sohbetGonder(k);
   return { tamam: true, ...oturumBilgi(k) };
+}
+
+// ---------- tasarım odası ----------
+// Anahtar "tasarim:<kat>". Tasarımcı katın proje klasöründe çalışır, yalnızca designs klasörüne yazar.
+const tasarimAnahtar = (katId) => `tasarim:${katId}`;
+function tasarimCoz(anahtar) {
+  const m = /^tasarim:([a-z0-9]{6,20})$/.exec(String(anahtar || ''));
+  const p = m && depo.proje(m[1]);
+  return p && p.tur !== 'kisisel' ? p : null;
+}
+const tasarimciAdi = () => (depo.veri.dil === 'en' ? 'Designer' : 'Tasarımcı');
+function tasarimGorunumu(anahtar) {
+  const p = tasarimCoz(anahtar);
+  const taban = gorunum(p ? p.id : null);
+  return { ...taban, sef: { ...taban.sef, ad: tasarimciAdi(), unvan: depo.veri.dil === 'en' ? 'Design room' : 'Tasarım odası' }, ajanlar: [], katId: anahtar };
+}
+// etkin tasarım: sohbete eklenen dosyalar o tasarımın assets klasörüne kopyalanır
+const tasarimEtkin = new Map();
+
+async function tasarimBaslat({ katId, surdur, sutun, satir }) {
+  const anahtar = tasarimAnahtar(String(katId || ''));
+  const p = tasarimCoz(anahtar);
+  if (!p) return { hata: 'projeYok' };
+  let klasor;
+  try {
+    klasor = path.resolve(p.klasor);
+    if (!fs.statSync(klasor).isDirectory()) throw new Error('klasör değil');
+  } catch {
+    return { hata: 'klasorYok' };
+  }
+  const k = katAl(anahtar);
+  if (k.oturum.acik) return { hata: 'acik' };
+  if (sunucuHata) return { hata: 'sunucu', ayrinti: sunucuHata };
+  if (!MOTORLAR.some((m) => aracAl(m))) await motorlarYenile();
+  const sirket = tasarimGorunumu(anahtar);
+  const motor = motorCoz(sirket, durumlar(), anahtarlar.durum());
+  if (!motor) return { hata: motorYokHatasi(sirket.motor) };
+  const yol = aracAl(motor).yol;
+  const apiModu = sirket.giris[motor] === 'api';
+  const anahtarDeger = apiModu ? anahtarlar.al(motor) : '';
+  if (apiModu && !anahtarDeger) return { hata: 'anahtarYok' };
+  fs.mkdirSync(tasarimKoku(klasor), { recursive: true });
+  const kayitli = (depo.veri.tasarimOturumlari || {})[p.id];
+  const eski = surdur && kayitli && kayitli.motor === motor ? kayitli.oturum : '';
+  const oturumId = motor === 'claude' && eski ? eski : crypto.randomUUID();
+  const hedef = path.join(app.getPath('userData'), 'calisma', 'tasarim-' + p.id);
+  // tasarım güçlü model ister: koordinatör modeli
+  const modelli = { ...sirket, sef: { ...sirket.sef, model: sirket.modeller.claude.koordinator, codexModel: '' } };
+  const kapali = new Set(sirket.kapaliSkiller);
+  const skillListesi = skiller.liste().filter((x) => !kapali.has(x.id)).map((x) => ({ id: x.id, yol: path.join(skiller.klasor, x.id, 'SKILL.md') }));
+  const talimat = tasarimMetni({ dil: sirket.dil, sirketAd: sirket.ad, ad: tasarimciAdi(), proje: { ...p, klasor }, skiller: skillListesi, sahip: (sirket.beyin && sirket.beyin.sahip) || '' });
+  const mcpAdres = mcpAdresi() + '/' + encodeURIComponent(anahtar);
+  let cikti;
+  try {
+    cikti = EK_MOTORLAR.includes(motor)
+      ? ekDerle(motor, modelli, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, mcpAdres, araclar: [], apiModu })
+      : derle(modelli, { hedef, skiller: [], port, anahtar: kancaAnahtari, etiket: oturumId, motor, codexModel: motor === 'codex' ? codexModelCoz() : null });
+  } catch (e) {
+    return { hata: 'derleme', ayrinti: String(e.message || e) };
+  }
+  const env = motorOrtami(motor, sirket, ortam, anahtarDeger, { codexApiKlasoru: codexApiKlasoru() });
+  // tasarımcı dosya düzenlemelerini sormadan yapar; komutlar motorun kendi onayına düşer
+  const izinli = { ...modelli, izinModu: 'acceptEdits' };
+  let arg;
+  if (EK_MOTORLAR.includes(motor)) {
+    fs.writeFileSync(cikti.sefDosya, talimat);
+    Object.assign(env, cikti.env);
+    arg = ekArgumanlari(motor, izinli, { surdur: eski, ekKlasorler: [skiller.klasor, medyaKlasoru()] });
+  } else if (motor === 'claude') {
+    fs.writeFileSync(cikti.sefDosya, talimat);
+    arg = [...oturumArgumanlari(izinli, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${p.ad} · ${tasarimciAdi()}` }), '--add-dir', skiller.klasor, '--add-dir', medyaKlasoru(), ...mcpBayraklari('claude', { adres: mcpAdres, hedef, ozel: true })];
+  } else {
+    if (apiModu) {
+      try {
+        await codexAnahtarGirisi({ yol, env: ortam, klasor: codexApiKlasoru(), anahtar: anahtarDeger, iz: crypto.createHash('sha256').update(anahtarDeger).digest('hex') });
+      } catch (e) {
+        return { hata: 'anahtarGiris', ayrinti: String(e.message || e) };
+      }
+    }
+    arg = [...codexArgumanlari(izinli, { ...cikti, talimat }, { klasor, surdur: eski, ekKlasorler: [skiller.klasor, medyaKlasoru()] }), ...mcpBayraklari('codex', { adres: mcpAdres, ozel: true })];
+  }
+  k.sohbet.length = 0;
+  try {
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ekEv: cikti && cikti.ev, tasarim: true, katId: p.id, codexOturum: motor !== 'claude' && eski ? eski : '', proje: klasor, surdurulen: !!eski, baslangic: Date.now() } });
+  } catch (e) {
+    return { hata: 'baslatma', ayrinti: String(e.message || e) };
+  }
+  if (motor === 'claude') depo.guncelle({ tasarimOturumlari: { ...(depo.veri.tasarimOturumlari || {}), [p.id]: { oturum: oturumId, motor: 'claude' } } });
+  sirketAyarla(k.durum, sirket);
+  oturumAc(k.durum, { oturumId, cwd: klasor });
+  durumGonder(k, true);
+  sohbetGonder(k);
+  return { tamam: true, ...oturumBilgi(k) };
+}
+
+// Tasarım klasörü izlenir: ajan bir dosyayı yazınca önizleme kendiliğinden yenilenir (yalnızca oda açıkken)
+let tasarimIzleyici = null;
+function tasarimIzle(katId) {
+  if (tasarimIzleyici && tasarimIzleyici.katId === katId) return;
+  tasarimBirak();
+  const p = tasarimCoz(tasarimAnahtar(katId));
+  if (!p) return;
+  const kok = tasarimKoku(p.klasor);
+  try {
+    fs.mkdirSync(kok, { recursive: true });
+  } catch {
+    return;
+  }
+  let zaman = null;
+  const degisen = new Set();
+  const haber = (dosya) => {
+    if (dosya) degisen.add(String(dosya).split(path.sep).join('/'));
+    clearTimeout(zaman);
+    zaman = setTimeout(() => {
+      gonder('tasarim:degisti', { katId, dosyalar: [...degisen].slice(0, 50) });
+      degisen.clear();
+    }, 180);
+  };
+  try {
+    const w = fs.watch(kok, { recursive: true }, (_t, dosya) => haber(dosya));
+    w.on('error', () => tasarimBirak());
+    tasarimIzleyici = { katId, w, kapat: () => (clearTimeout(zaman), w.close()) };
+  } catch {
+    // özyinelemeli izleme yoksa (eski Linux) yalnızca kök izlenir
+    try {
+      const w = fs.watch(kok, (_t, dosya) => haber(dosya));
+      tasarimIzleyici = { katId, w, kapat: () => (clearTimeout(zaman), w.close()) };
+    } catch {
+      tasarimIzleyici = null;
+    }
+  }
+}
+function tasarimBirak() {
+  if (tasarimIzleyici) tasarimIzleyici.kapat();
+  tasarimIzleyici = null;
 }
 
 // Kişisel kat: uygulamanın veri klasöründe durur, tek tanedir
@@ -2017,7 +2165,41 @@ function ipcKur() {
     const s = secenek || {};
     if (s.beyin) return beyinBaslat(s);
     if (s.ozel) return ozelBaslat({ ...s.ozel, surdur: s.surdur, sutun: s.sutun, satir: s.satir });
+    if (s.tasarim) return tasarimBaslat({ katId: s.tasarim, surdur: s.surdur, sutun: s.sutun, satir: s.satir });
     return oturumBaslat(s);
+  });
+  // tasarım odası
+  const tasarimProje = (katId) => {
+    const p = tasarimCoz(tasarimAnahtar(String(katId || '')));
+    if (!p) throw new Error('Kat bulunamadı');
+    return p;
+  };
+  h('tasarim:liste', (katId) => {
+    const p = tasarimProje(katId);
+    return { liste: tasarimListesi(p.klasor), klasor: tasarimKoku(p.klasor) };
+  });
+  h('tasarim:yeni', (katId) => {
+    const p = tasarimProje(katId);
+    const id = yeniTasarim(p.klasor);
+    tasarimEtkin.set(p.id, id);
+    return { tamam: true, id };
+  });
+  h('tasarim:etkin', (katId, id) => {
+    const p = tasarimProje(katId);
+    if (gecerliTasarim(id)) tasarimEtkin.set(p.id, id);
+    return { tamam: true };
+  });
+  h('tasarim:izle', (katId) => {
+    if (katId) tasarimIzle(String(katId));
+    else tasarimBirak();
+    return { tamam: true };
+  });
+  h('tasarim:klasor', (katId, id) => {
+    const p = tasarimProje(katId);
+    const yol = tasarimYolu(p.klasor, gecerliTasarim(id) ? id : '') || tasarimKoku(p.klasor);
+    fs.mkdirSync(yol, { recursive: true });
+    shell.openPath(yol);
+    return { tamam: true };
   });
   h('oda:kur', (katId, sablonlar) => ({ tamam: true, kurulan: odalariKur(String(katId), Array.isArray(sablonlar) ? sablonlar : []) }));
   const odaCozIpc = (anahtar) => {
@@ -2032,6 +2214,14 @@ function ipcKur() {
   // Dosya ekleme: seçilen dosyalar odanın ekler klasörüne kopyalanır, kişi oradan okur
   // Sohbet ekleri: özel odada odanın ekler klasörü, beyin ve katlarda ortak medya klasörü (oturumlar bu klasörü okuyabilir)
   const ekKlasoru = (anahtar) => {
+    const tp = tasarimCoz(anahtar);
+    if (tp) {
+      // tasarım odası: etkin tasarımın assets klasörü (HTML görseli göreli yolla kullanır)
+      const id = tasarimEtkin.get(tp.id);
+      const k = gecerliTasarim(id) ? path.join(tasarimKoku(tp.klasor), id, 'assets') : path.join(tasarimKoku(tp.klasor), 'assets');
+      fs.mkdirSync(k, { recursive: true });
+      return k;
+    }
     if (String(anahtar || '').startsWith('ozel:')) {
       const o = odaCozIpc(anahtar);
       return path.join(odaHazirla(o.katId, o.ajanId), 'ekler');
@@ -2719,6 +2909,32 @@ function protokolKur() {
   });
 }
 
+// Tasarım önizlemesi: yalnızca katların designs klasörlerinden okur, HTML'e seçici katman eklenir
+let seciciBetik = null;
+function tasarimProtokolKur() {
+  protocol.handle('tasarim', async (istek) => {
+    const u = new URL(istek.url);
+    const p = tasarimCoz(tasarimAnahtar(u.hostname));
+    const dosya = p && tasarimYolu(p.klasor, decodeURIComponent(u.pathname));
+    if (!dosya) {
+      gunluk('tasarim', 'önizleme reddedildi', u.hostname, p ? 'yol' : 'kat');
+      return new Response('', { status: 403 });
+    }
+    try {
+      const uzanti = path.extname(dosya).toLowerCase();
+      const tur = TURLER[uzanti] || { '.htm': 'text/html; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.mp4': 'video/mp4', '.webm': 'video/webm', '.otf': 'font/otf', '.ttf': 'font/ttf' }[uzanti] || 'application/octet-stream';
+      if (uzanti === '.html' || uzanti === '.htm') {
+        if (seciciBetik === null || !app.isPackaged) seciciBetik = await fs.promises.readFile(path.join(KOK, 'arayuz', 'tasarim-secici.js'), 'utf8');
+        const html = await fs.promises.readFile(dosya, 'utf8');
+        return new Response(seciciEkle(html, seciciBetik), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      }
+      return new Response(await fs.promises.readFile(dosya), { headers: { 'content-type': tur, 'cache-control': 'no-store' } });
+    } catch {
+      return new Response('', { status: 404 });
+    }
+  });
+}
+
 function menuKur() {
   const mac = process.platform === 'darwin';
   const tr = depo.veri.dil === 'tr';
@@ -2989,6 +3205,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     protokolKur();
+    tasarimProtokolKur();
     ipcKur();
     menuKur();
 
