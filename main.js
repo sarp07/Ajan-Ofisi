@@ -43,7 +43,7 @@ import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
 import { playwrightKur, playwrightOrtami, PLAYWRIGHT_PAKET } from './cekirdek/playwright.js';
-import { tasarimListesi, yeniTasarim, tasarimYolu, tasarimKoku, gecerliTasarim, seciciEkle, tasarimMetni } from './cekirdek/tasarim.js';
+import { tasarimListesi, yeniTasarim, tasarimYolu, tasarimKoku, gecerliTasarim, seciciEkle, tasarimMetni, tasarimPlani } from './cekirdek/tasarim.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -1068,8 +1068,9 @@ async function tasarimBaslat({ katId, surdur, sutun, satir }) {
     return { hata: 'derleme', ayrinti: String(e.message || e) };
   }
   const env = motorOrtami(motor, sirket, ortam, anahtarDeger, { codexApiKlasoru: codexApiKlasoru() });
-  // tasarımcı dosya düzenlemelerini sormadan yapar; komutlar motorun kendi onayına düşer
-  const izinli = { ...modelli, izinModu: 'acceptEdits' };
+  // tasarımcı sormadan çalışır (sahip böyle istedi): düzenlemeler, komutlar (görsel indirme, sıkıştırma) ve web erişimi.
+  // Claude'da tam atlatma modu ilk açılışta uyarı penceresi çıkardığı için düzenleme modu + bütün komutlara izin verilir.
+  const izinli = { ...modelli, izinModu: motor === 'claude' ? 'acceptEdits' : 'bypassPermissions' };
   let arg;
   if (EK_MOTORLAR.includes(motor)) {
     fs.writeFileSync(cikti.sefDosya, talimat);
@@ -1078,6 +1079,9 @@ async function tasarimBaslat({ katId, surdur, sutun, satir }) {
   } else if (motor === 'claude') {
     fs.writeFileSync(cikti.sefDosya, talimat);
     arg = [...oturumArgumanlari(izinli, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${p.ad} · ${tasarimciAdi()}` }), '--add-dir', skiller.klasor, '--add-dir', medyaKlasoru(), ...mcpBayraklari('claude', { adres: mcpAdres, hedef, ozel: true })];
+    const izin = arg.indexOf('--allowedTools');
+    if (izin >= 0) arg[izin + 1] += ',Bash,WebFetch,WebSearch';
+    else arg.push('--allowedTools', 'Bash,WebFetch,WebSearch');
   } else {
     if (apiModu) {
       try {
@@ -1110,9 +1114,20 @@ function tasarimIzle(katId) {
   const p = tasarimCoz(tasarimAnahtar(katId));
   if (!p) return;
   const kok = tasarimKoku(p.klasor);
-  try {
-    fs.mkdirSync(kok, { recursive: true });
-  } catch {
+  // designs klasörü yalnızca tasarımcı başlayınca açılır; o zamana kadar proje klasörü izlenir, klasör belirince ona geçilir
+  if (!fs.existsSync(kok)) {
+    try {
+      const w = fs.watch(p.klasor, (_t, ad) => {
+        if (String(ad) !== path.basename(kok) || !fs.existsSync(kok)) return;
+        tasarimBirak();
+        tasarimIzle(katId);
+        gonder('tasarim:degisti', { katId, dosyalar: [] });
+      });
+      w.on('error', () => tasarimBirak());
+      tasarimIzleyici = { katId, w, kapat: () => w.close() };
+    } catch {
+      tasarimIzleyici = null;
+    }
     return;
   }
   let zaman = null;
@@ -2184,6 +2199,7 @@ function ipcKur() {
     tasarimEtkin.set(p.id, id);
     return { tamam: true, id };
   });
+  h('tasarim:plan', (katId, id, dosya) => ({ metin: tasarimPlani(tasarimProje(katId).klasor, id, dosya) }));
   h('tasarim:etkin', (katId, id) => {
     const p = tasarimProje(katId);
     if (gecerliTasarim(id)) tasarimEtkin.set(p.id, id);
@@ -2197,8 +2213,8 @@ function ipcKur() {
   h('tasarim:klasor', (katId, id) => {
     const p = tasarimProje(katId);
     const yol = tasarimYolu(p.klasor, gecerliTasarim(id) ? id : '') || tasarimKoku(p.klasor);
-    fs.mkdirSync(yol, { recursive: true });
-    shell.openPath(yol);
+    // klasör yoksa proje klasörü açılır (boş designs klasörü açılmaz)
+    shell.openPath(fs.existsSync(yol) ? yol : p.klasor);
     return { tamam: true };
   });
   h('oda:kur', (katId, sablonlar) => ({ tamam: true, kurulan: odalariKur(String(katId), Array.isArray(sablonlar) ? sablonlar : []) }));

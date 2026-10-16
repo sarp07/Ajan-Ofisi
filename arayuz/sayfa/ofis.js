@@ -10,6 +10,7 @@ import { basHarf, MISAFIR_RENK } from '../../cekirdek/kimlik.js';
 import { neZaman } from './projeler.js';
 import { tasarimAlani } from '../tasarim.js';
 
+const hareketAz = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 const YER = { masa: 'yer.masa', kutuphane: 'yer.kutuphane', kahve: 'yer.kahve', oyun: 'yer.oyun' };
 
 function sure(ms, t) {
@@ -712,9 +713,13 @@ export function ofisSayfasi({ git }) {
   }
 
   // ---------- bina özeti (beyin görünümü) ----------
+  let sonGorunum = null;
   function binaCiz() {
     const tt = depo.t;
     const panel = panelMi();
+    // görünüm değişince (beyin, kat, tasarım odası, özel oda) sahne alanı yumuşakça belirir
+    if (sonGorunum !== null && sonGorunum !== depo.gorunum && !hareketAz.matches && sahneKap.animate) sahneKap.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    sonGorunum = depo.gorunum;
     kok.classList.toggle('beyinModu', panel);
     kok.classList.toggle('ozelModu', ozelMi());
     kok.classList.toggle('tasarimModu', tasarimMi());
@@ -1247,11 +1252,15 @@ export function ofisSayfasi({ git }) {
     sohbetGiris.title = tt('sohbet.ipucu');
     // cevap beklenirken "düşünüyor", oturum yeni açıldıysa "hazırlanıyor" göstergesi
     const son = liste[liste.length - 1];
-    const dusunuyor = acik && son && son.kim === 'sen' && !liste.some((m) => m.acik);
+    // şef (ya da tasarımcı, beyin) çalışırken de "düşünüyor" görünür; o an ne yaptığı yanında yazar
+    const sefA = (depo.canli.ajanlar || []).find((a) => a.sef);
+    const calisiyor = !!(acik && sefA && (sefA.durum === 'calisiyor' || sefA.durum === 'arastiriyor'));
+    const simdikiIs = calisiyor ? sefA.ozet || '' : '';
+    const dusunuyor = acik && !liste.some((m) => m.acik) && ((son && son.kim === 'sen') || calisiyor);
     const gecen = acik ? Date.now() - (depo.oturum.baslangic || 0) : Infinity;
     const hazirlaniyor = acik && !liste.length && gecen < 7000;
     if (hazirlaniyor) setTimeout(() => sohbetCiz(), 7000 - gecen + 50);
-    const iz = JSON.stringify([depo.gorunum, seciliKat(), acik, dusunuyor, hazirlaniyor, liste.length, liste.map((m) => m.id + (m.acik ? 1 : 0)).join(), depo.t('sohbet.baslik')]);
+    const iz = JSON.stringify([depo.gorunum, seciliKat(), acik, dusunuyor, simdikiIs, hazirlaniyor, liste.length, liste.map((m) => m.id + (m.acik ? 1 : 0)).join(), depo.t('sohbet.baslik')]);
     if (iz === sohbetIzi) return;
     sohbetIzi = iz;
     const altta = sohbetListe.scrollHeight - sohbetListe.scrollTop - sohbetListe.clientHeight < 40;
@@ -1327,7 +1336,15 @@ export function ofisSayfasi({ git }) {
         return h('li', { class: 'mesaj ' + (m.kim === 'sen' ? 'sen' : m.kim === 'iletim' ? 'iletim' : m.tur === 'hata' ? 'hata' : 'sef') }, ust, govde);
       })
     );
-    if (dusunuyor) sohbetListe.append(h('li', { class: 'mesaj sef dusunuyor', 'aria-label': tt('sohbet.dusunuyor', { x: muhatap() }) }, h('div', { class: 'mesajUst' }, h('b', null, muhatap())), h('span', { class: 'nokta' }, h('i'), h('i'), h('i'))));
+    if (dusunuyor)
+      sohbetListe.append(
+        h(
+          'li',
+          { class: 'mesaj sef dusunuyor', 'aria-label': tt('sohbet.dusunuyor', { x: muhatap() }) },
+          h('div', { class: 'mesajUst' }, h('b', null, muhatap())),
+          h('div', { class: 'dusunSatir' }, h('span', { class: 'nokta' }, h('i'), h('i'), h('i')), h('span', { class: 'dusunMetin' }, simdikiIs || tt('sohbet.dusunuyor', { x: muhatap() })))
+        )
+      );
     if (altta || liste[liste.length - 1].kim === 'sen' || bekleyen) sohbetListe.scrollTop = sohbetListe.scrollHeight;
   }
 
@@ -1592,6 +1609,9 @@ export function ofisSayfasi({ git }) {
     dockCiz();
   });
   dinle('canli', () => {
+    // düşünüyor balonu ve tasarım odasının süreç akışı canlı güncellenir (değişmediyse çizilmez)
+    sohbetCiz();
+    tasarimA.tazele();
     if (secili && !depo.canli.ajanlar.some((a) => a.id === secili)) {
       secili = null;
       sahne.sec(null);
@@ -1621,7 +1641,7 @@ export function ofisSayfasi({ git }) {
     sohbetCiz();
   });
   dinle('oturum', () => {
-    tasarimA.tazele();
+    tasarimA.oturumDegisti();
     katSeritCiz();
     binaCiz();
     sohbetCiz();

@@ -1,7 +1,7 @@
 // Tasarım odası çalışma alanı: solda sohbet (ofis sayfasının konuşma paneli buraya taşınır), ortada canlı önizleme,
 // sağda seçilen öğenin denetçisi. Tasarımlar katın designs/0001… klasörlerinde, her sayfa ayrı HTML dosyasıdır.
 // Önizleme kum havuzlu çerçevede açılır ve iki tamponludur: yeni hali arkada yüklenir, hazır olunca öne geçer.
-import { h, doldur, ikon, ayirici } from './dom.js';
+import { h, doldur, ikon, ayirici, mdMetin, saatYaz } from './dom.js';
 import { depo, api, bildir, hataMetni } from './depo.js';
 
 // [ad, simge, genişlik, yükseklik]: telefonlar gerçek ekran ölçüsünde, sahneye sığacak kadar küçültülerek gösterilir
@@ -64,6 +64,12 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
   let kaydirY = 0;
   let menuAcik = false;
   let gorunur = false;
+  // süreç: tasarımcının adımları (canlı akıştan), son yazılan dosyalar ve plan
+  let sonDosyalar = [];
+  let plan = { anahtar: '', metin: '' };
+  let planAcik = false;
+  let cekmeceAcik = false;
+  let surecIzi = '';
 
   // ---------- iskelet ----------
   const sohbetYuva = h('div', { class: 'tsSohbetYuva' });
@@ -81,9 +87,10 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
   let on = cerceveA;
   let arka = cerceveB;
   const cerceveKap = h('div', { class: 'tsCerceve' }, cerceveA, cerceveB);
-  const calisiyorEl = h('div', { class: 'tsCalisiyor', hidden: true }, h('span', { class: 'nabiz' }, h('i'), h('i'), h('i')), h('span'));
+  const calisiyorEl = h('button', { type: 'button', class: 'tsCalisiyor', hidden: true, 'aria-expanded': 'false', onclick: () => ((cekmeceAcik = !cekmeceAcik), (surecIzi = ''), surecTazele()) });
+  const cekmece = h('div', { class: 'tsCekmece', hidden: true });
   const bosEl = h('div', { class: 'tsBos', hidden: true });
-  const sahne = h('div', { class: 'tsSahne' }, cerceveKap, bosEl, calisiyorEl);
+  const sahne = h('div', { class: 'tsSahne' }, cerceveKap, bosEl, calisiyorEl, cekmece);
   const tuval = h('section', { class: 'tsTuval' }, ust, sahne);
   const denetci = h('aside', { class: 'tsDenetci', hidden: true });
 
@@ -109,7 +116,7 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
   });
 
   // ---------- önizleme ----------
-  const adres = (s = sayfa) => `tasarim://${katId}/${etkin}/${encodeURIComponent(s)}?v=${++surum}${kaydirY ? '&ofisY=' + kaydirY : ''}`;
+  const adres = (s = sayfa) => `tasarim://${katId}/${etkin}/${s.split('/').map(encodeURIComponent).join('/')}?v=${++surum}${kaydirY ? '&ofisY=' + kaydirY : ''}`;
   const yolla = (cerceve, veri) => cerceve.contentWindow && cerceve.contentWindow.postMessage({ ofisTasarim: true, ...veri }, '*');
 
   // Sayfa seçici katmanı çalıştırmadan açılırsa (bozuk HTML, hata sayfası) yine de öne alınır: önizleme boş kalmaz
@@ -179,7 +186,7 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
   const tasarim = () => liste.find((x) => x.id === etkin) || null;
   const sayfalar = () => (tasarim() || { sayfalar: [] }).sayfalar;
 
-  async function listeYukle() {
+  async function listeYukle(yuklesin = true) {
     if (!katId) return;
     const istenen = katId;
     const r = await api.tasarimListe(katId);
@@ -197,7 +204,7 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
       kaydirY = 0;
     }
     ciz();
-    yukle();
+    if (yuklesin) yukle();
   }
 
   function tasarimSec(id) {
@@ -445,6 +452,7 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
               sakla('tasarim.cihaz', ad);
               ustCiz();
               cihazUygula();
+              surecTazele();
             },
           },
           ikon(simge, 15)
@@ -480,6 +488,16 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
     cerceveKap.hidden = yok;
     if (!yok) return;
     const acik = depo.oturum.acik && !depo.oturum.giris;
+    // tasarımcı çalışıyorsa ya da bir şey yaptıysa öneriler yerine süreç gösterilir
+    const t_ = tasarim();
+    if (acik && (calisiyorMu() || adimlar().some((x) => x.tur === 'arac') || (t_ && t_.dosyaSayisi))) {
+      // çalışırken arkada isteğe göre iskelet yanıp söner, süreç kartı önünde durur
+      bosEl.classList.add('surecli');
+      bosEl.classList.toggle('canli', calisiyorMu());
+      doldur(bosEl, siluet(), h('div', { class: 'tsSurec buyuk' }, surecIcerik(true), h('p', { class: 'tsBosNot' }, tt('tasarim.ilkSayfa'))));
+      return;
+    }
+    bosEl.classList.remove('surecli', 'canli');
     const oneriler = ['tasarim.oneri1', 'tasarim.oneri2', 'tasarim.oneri3', 'tasarim.oneri4'];
     doldur(
       bosEl,
@@ -497,13 +515,162 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
     );
   }
 
-  function calisiyorCiz() {
+  // ---------- süreç ----------
+  // Tasarımcı çalışırken ne yaptığı görünür: o anki adım, son adımlar, yazılan dosyalar ve plan.
+  const sefCanli = () => (depo.canli.ajanlar || []).find((a) => a.sef) || null;
+  function calisiyorMu() {
     const o = depo.oturum;
+    if (!o.acik || o.giris) return false;
+    const a = sefCanli();
+    if (a && (a.durum === 'calisiyor' || a.durum === 'arastiriyor')) return true;
     const sohbet = depo.sohbet || [];
     const son = sohbet[sohbet.length - 1];
-    const ac = !!(o.acik && !o.giris && (o.mesgul || (son && son.kim === 'sen' && !sohbet.some((m) => m.acik))));
-    calisiyorEl.hidden = !ac;
-    if (ac) calisiyorEl.lastChild.textContent = tt('tasarim.calisiyor', { x: tt('tasarim.tasarimci') });
+    return !!(son && son.kim === 'sen' && !sohbet.some((m) => m.acik));
+  }
+  // akıştaki istek metninden tasarım bağlam satırları atılır
+  const BAGLAM = /\[(?:Tasarım|Design) \d{4}[^\]]*\]\s*|\[(?:Seçili öğe|Selected element|Doğrudan düzenlemeler|Direct edits)\][^\n]*/g;
+  const adimlar = () =>
+    (depo.canli.akis || [])
+      .filter((x) => x.tur !== 'mesaj')
+      .slice(-12)
+      .reverse()
+      .map((x) => (x.tur === 'istek' ? { ...x, metin: String(x.metin || '').replace(BAGLAM, '').trim() } : x));
+  const TUR_SIMGE = { arac: 'kod', istek: 'gonder', durum: 'tik', hata: 'ucgen', gorev: 'hedef', onay: 'kalkan' };
+
+  async function planYukle(t_) {
+    const anahtar = etkin + '/' + t_.plan;
+    if (plan.anahtar === anahtar) return;
+    plan = { anahtar, metin: '' };
+    const r = await api.tasarimPlan(katId, etkin, t_.plan);
+    if (plan.anahtar === anahtar) {
+      plan.metin = (r && r.metin) || '';
+      surecIzi = '';
+      surecTazele();
+    }
+  }
+
+  function surecIcerik(buyuk) {
+    const a = sefCanli();
+    const calisiyor = calisiyorMu();
+    const t_ = tasarim();
+    const ad = tt('tasarim.tasarimci');
+    const liste = adimlar();
+    if (t_ && t_.plan && planAcik) planYukle(t_);
+    return [
+      h(
+        'div',
+        { class: 'tsSurecBas' },
+        h('span', { class: 'tsSurecNokta' + (calisiyor ? ' canli' : '') }),
+        h('div', null, h('b', null, calisiyor ? tt('tasarim.calisiyor', { x: ad }) : tt('tasarim.bekliyor', { x: ad })), a && a.ozet && calisiyor ? h('p', null, a.ozet) : null)
+      ),
+      liste.length
+        ? h(
+            'ol',
+            { class: 'tsAdimlar' },
+            liste.slice(0, buyuk ? 10 : 7).map((x, i) => h('li', { class: 'tur-' + x.tur + (i === 0 && calisiyor && x.tur === 'arac' ? ' simdi' : '') }, ikon(TUR_SIMGE[x.tur] || 'tik', 12), h('span', null, x.metin), h('time', null, saatYaz(x.z))))
+          )
+        : null,
+      t_ && (t_.dosyaSayisi || t_.plan)
+        ? h(
+            'div',
+            { class: 'tsDosyaOzet' },
+            ikon('klasor', 13),
+            h('span', null, tt('tasarim.dosyaOzet', { x: t_.id, y: t_.dosyaSayisi, z: t_.sayfalar.length })),
+            t_.plan ? h('button', { type: 'button', class: 'tsBag', onclick: () => ((planAcik = !planAcik), (surecIzi = ''), surecTazele()) }, tt(planAcik ? 'tasarim.planGizle' : 'tasarim.planGoster', { x: t_.plan })) : null
+          )
+        : null,
+      sonDosyalar.length ? h('div', { class: 'tsSonDosyalar' }, sonDosyalar.slice(0, buyuk ? 8 : 5).map((d) => h('code', { title: d.dosya }, d.dosya.split('/').pop()))) : null,
+      planAcik && t_ && t_.plan ? h('div', { class: 'tsPlan' }, plan.metin ? mdMetin(plan.metin) : h('p', { class: 'tsIpucu' }, '…')) : null,
+    ];
+  }
+
+  // İsteğe göre şekillenen iskelet: tasarımcı çalışırken önizlemenin yerinde yanıp söner.
+  // Tür sahibin son mesajından ve seçili cihazdan çıkarılır: mobil uygulama, panel, menü ya da açılış sayfası.
+  function siluetTuru() {
+    const son = [...(depo.sohbet || [])].reverse().find((m) => m.kim === 'sen');
+    const m = String((son && son.metin) || '').toLocaleLowerCase('tr');
+    if (cihaz === 'iphone' || cihaz === 'android' || /mobil uygulama|mobile app|\bapp\b|ios|android|uygulama ekran|ekranlar/.test(m)) return 'mobil';
+    if (/admin|panel|dashboard|yönetim|kontrol paneli/.test(m) && !/landing|açılış|web site/.test(m)) return 'panel';
+    if (/qr|menü|menu|fiyat listesi/.test(m) && !/landing|açılış/.test(m)) return 'menu';
+    return 'site';
+  }
+  const sk = (sinif, ...c) => h('div', { class: 'sk ' + sinif }, ...c);
+  function siluet() {
+    const tur = siluetTuru();
+    const govde =
+      tur === 'mobil'
+        ? [
+            sk('skDurum'),
+            sk('skBaslik'),
+            sk('skKart buyuk'),
+            h('div', { class: 'skSira' }, sk('skKare'), sk('skKare'), sk('skKare')),
+            sk('skSatir'),
+            sk('skSatir kisa'),
+            sk('skKart'),
+            h('div', { class: 'skSekmeler' }, sk('skNokta'), sk('skNokta'), sk('skNokta'), sk('skNokta')),
+          ]
+        : tur === 'panel'
+        ? [
+            h(
+              'div',
+              { class: 'skPanel' },
+              h('div', { class: 'skYan' }, sk('skLogo'), sk('skSatir'), sk('skSatir'), sk('skSatir'), sk('skSatir kisa')),
+              h(
+                'div',
+                { class: 'skAna' },
+                sk('skBaslik'),
+                h('div', { class: 'skSira' }, sk('skKart'), sk('skKart'), sk('skKart'), sk('skKart')),
+                sk('skGrafik'),
+                h('div', { class: 'skSira' }, sk('skKart uzun'), sk('skKart uzun'))
+              )
+            ),
+          ]
+        : tur === 'menu'
+        ? [
+            h('div', { class: 'skNav' }, sk('skLogo'), h('div', { class: 'skSira dar' }, sk('skBag'), sk('skBag'), sk('skBag'))),
+            sk('skBaslik orta'),
+            h('div', { class: 'skSira dar orta' }, sk('skCip'), sk('skCip'), sk('skCip'), sk('skCip')),
+            ...[0, 1, 2, 3, 4].map(() => h('div', { class: 'skUrun' }, sk('skKare'), h('div', { class: 'skUrunMetin' }, sk('skSatir'), sk('skSatir kisa')), sk('skFiyat'))),
+          ]
+        : [
+            h('div', { class: 'skNav' }, sk('skLogo'), h('div', { class: 'skSira dar' }, sk('skBag'), sk('skBag'), sk('skBag'), sk('skDugme'))),
+            h('div', { class: 'skHero' }, h('div', { class: 'skHeroMetin' }, sk('skBaslik buyuk'), sk('skBaslik'), sk('skSatir'), sk('skSatir kisa'), h('div', { class: 'skSira dar' }, sk('skDugme'), sk('skDugme hayalet'))), sk('skGorsel')),
+            h('div', { class: 'skSira' }, sk('skKart'), sk('skKart'), sk('skKart')),
+            sk('skBant'),
+          ];
+    return h('div', { class: 'tsSiluet tur-' + tur, 'aria-hidden': 'true' }, h('div', { class: 'skSayfa' }, govde), h('div', { class: 'skParilti' }));
+  }
+
+  // canlı akış her saniye gelebilir: yalnızca görünen bilgi değişince çizilir
+  function surecTazele() {
+    if (!gorunur) return;
+    const a = sefCanli();
+    const calisiyor = calisiyorMu();
+    const ak = adimlar();
+    const t_ = tasarim();
+    const iz = JSON.stringify([calisiyor, cihaz, !sayfa && siluetTuru(), a && a.ozet, ak.length && ak[0].z, ak.length, sonDosyalar.length && sonDosyalar[0].z, t_ && [t_.id, t_.dosyaSayisi, t_.plan, t_.sayfalar.length], planAcik, plan.metin.length, cekmeceAcik, !!sayfa, depo.oturum.acik]);
+    if (iz === surecIzi) return;
+    surecIzi = iz;
+    // sayfa yokken süreç boş ekranın yerini alır; sayfa varken üstte bir hap, tıklayınca açılan çekmece
+    if (!sayfa) {
+      calisiyorEl.hidden = true;
+      cekmece.hidden = true;
+      bosCiz();
+      return;
+    }
+    // tasarımcı açık sayfayı yazarken çerçeve nefes alır
+    cerceveKap.classList.toggle('yaziliyor', calisiyor);
+    calisiyorEl.hidden = !calisiyor && !cekmeceAcik;
+    calisiyorEl.setAttribute('aria-expanded', cekmeceAcik ? 'true' : 'false');
+    doldur(
+      calisiyorEl,
+      h('span', { class: 'nabiz' }, h('i'), h('i'), h('i')),
+      h('span', null, calisiyor ? tt('tasarim.calisiyor', { x: tt('tasarim.tasarimci') }) : tt('tasarim.bekliyor', { x: tt('tasarim.tasarimci') })),
+      calisiyor && a && a.ozet ? h('span', { class: 'tsHapIs' }, a.ozet) : null,
+      ikon(cekmeceAcik ? 'yukari' : 'asagi', 12)
+    );
+    cekmece.hidden = !cekmeceAcik;
+    if (cekmeceAcik) doldur(cekmece, surecIcerik(false));
   }
 
   const turAdi = (tur) => tt('tasarim.tur.' + (['button', 'link', 'image', 'input', 'section', 'text', 'container'].includes(tur) ? tur : 'container'));
@@ -652,7 +819,8 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
     ustCiz();
     cihazUygula();
     bosCiz();
-    calisiyorCiz();
+    surecIzi = '';
+    surecTazele();
     denetciCiz();
   }
 
@@ -662,12 +830,22 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
     if (!gorunur || !v || v.katId !== katId) return;
     clearTimeout(tazeZ);
     tazeZ = setTimeout(async () => {
-      const onceki = JSON.stringify(sayfalar().map((s) => s.dosya));
       const oncekiSayfa = sayfa;
-      await listeYukle();
-      const ilgili = (v.dosyalar || []).some((f) => f.startsWith(etkin + '/'));
-      // listeYukle sayfa değiştiyse zaten yükledi
-      if (ilgili && oncekiSayfa === sayfa && onceki === JSON.stringify(sayfalar().map((s) => s.dosya))) yukle();
+      const oncekiEtkin = etkin;
+      await listeYukle(false);
+      const benim = (v.dosyalar || []).filter((f) => f.startsWith(etkin + '/'));
+      // süreç: son yazılan dosyalar (en yenisi önde)
+      const z = Date.now();
+      // uzantısız girdiler klasördür, listeye girmez
+      for (const f of benim.filter((x) => /\.[a-z0-9]{1,6}$/i.test(x))) {
+        sonDosyalar = [{ dosya: f.slice(5), z }, ...sonDosyalar.filter((x) => x.dosya !== f.slice(5))].slice(0, 14);
+        if (plan.anahtar && f.slice(5) === plan.anahtar.split('/').pop()) plan.anahtar = '';
+      }
+      surecIzi = '';
+      surecTazele();
+      // önizleme yalnızca açık sayfa, onun görselleri ya da stil dosyaları değişince (veya ilk sayfa geldiğinde) yenilenir
+      const acikDegisti = benim.some((f) => f === etkin + '/' + sayfa || !/\.(md|txt|json)$/i.test(f));
+      if (sayfa && (oncekiSayfa !== sayfa || oncekiEtkin !== etkin || acikDegisti)) yukle();
     }, 120);
   });
 
@@ -699,6 +877,9 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
         secili = null;
         bekleyen.clear();
         kaydirY = 0;
+        sonDosyalar = [];
+        plan = { anahtar: '', metin: '' };
+        planAcik = false;
       }
       api.tasarimIzle(katId);
       ciz();
@@ -715,10 +896,16 @@ export function tasarimAlani({ baslat, sohbetOner, katlar, katSec }) {
     },
     tazele() {
       if (!gorunur) return;
+      surecTazele();
+    },
+    // oturum açılıp kapanınca başlat düğmesi, öneriler ve düğmelerin durumu yenilenir
+    oturumDegisti() {
+      if (!gorunur) return;
       ustCiz();
       bosCiz();
-      calisiyorCiz();
-      if (secili) bekleyenCiz();
+      surecIzi = '';
+      surecTazele();
+      if (secili) denetciCiz();
     },
     baglamAl,
   };

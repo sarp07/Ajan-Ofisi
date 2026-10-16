@@ -22,12 +22,37 @@ export function tasarimListesi(projeKlasoru) {
   for (const e of girdiler) {
     if (!e.isDirectory() || !NO.test(e.name)) continue;
     const dir = path.join(kok, e.name);
-    let dosyalar = [];
+    let girdi = [];
     try {
-      dosyalar = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && SAYFA.test(d.name));
+      girdi = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
+    // sayfalar: tasarımın kökündeki HTML dosyaları ve bir alt klasördekiler (ör. dil klasörleri: en/index.html)
+    const dosyalar = girdi.filter((d) => d.isFile() && SAYFA.test(d.name)).map((d) => ({ name: d.name }));
+    for (const d of girdi) {
+      if (!d.isDirectory() || d.name === 'assets' || d.name.startsWith('.')) continue;
+      try {
+        for (const a of fs.readdirSync(path.join(dir, d.name), { withFileTypes: true })) if (a.isFile() && SAYFA.test(a.name)) dosyalar.push({ name: d.name + '/' + a.name });
+      } catch {
+        /* okunamadı */
+      }
+    }
+    // plan (SPEC.md gibi) ve diğer dosyaların sayısı: tasarımcı daha sayfa yazmadan ilerlemeyi gösterir
+    const plan = (girdi.find((d) => d.isFile() && /^(spec|plan|brief)[\w-]*\.md$/i.test(d.name)) || girdi.find((d) => d.isFile() && /\.md$/i.test(d.name)) || {}).name || '';
+    let dosyaSayisi = 0;
+    const say = (d, derin) => {
+      if (derin > 3 || dosyaSayisi > 2000) return;
+      try {
+        for (const a of fs.readdirSync(d, { withFileTypes: true })) {
+          if (a.isDirectory()) say(path.join(d, a.name), derin + 1);
+          else if (a.isFile()) dosyaSayisi++;
+        }
+      } catch {
+        /* okunamadı */
+      }
+    };
+    say(dir, 0);
     let z = 0;
     const sayfalar = dosyalar
       .map((d) => {
@@ -48,7 +73,7 @@ export function tasarimListesi(projeKlasoru) {
         z = 0;
       }
     }
-    sonuc.push({ id: e.name, sayfalar, z });
+    sonuc.push({ id: e.name, sayfalar, z, plan, dosyaSayisi });
   }
   return sonuc.sort((a, b) => b.id.localeCompare(a.id));
 }
@@ -75,6 +100,17 @@ export function tasarimYolu(projeKlasoru, goreli) {
 }
 
 export const gecerliTasarim = (id) => typeof id === 'string' && NO.test(id);
+
+// Tasarımın planı (Markdown) okunur: önizleme alanında gösterilir
+export function tasarimPlani(projeKlasoru, id, dosya) {
+  if (!gecerliTasarim(id) || !/^[\w.-]+\.md$/i.test(String(dosya || ''))) return '';
+  const yol = tasarimYolu(projeKlasoru, id + '/' + dosya);
+  try {
+    return yol ? fs.readFileSync(yol, 'utf8').slice(0, 40000) : '';
+  } catch {
+    return '';
+  }
+}
 
 // Önizlemeye seçici katmanı eklenir: öğe seçme ve canlı düzenleme bununla yapılır (dosyaya yazılmaz)
 export function seciciEkle(html, betik) {

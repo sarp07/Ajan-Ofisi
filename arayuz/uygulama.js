@@ -112,10 +112,19 @@ function git(ad, arg, kisiselden) {
     icerik.append(sayfa.kok);
   }
   const sayfa = kurulan.get(ad);
+  const degisti = simdiki !== ad;
   sayfa.kok.hidden = false;
+  // sayfa geçişi: yeni sayfa hafifçe kayarak belirir (hareket azaltma açıksa yok)
+  if (degisti) hisGecis(sayfa.kok);
   simdiki = ad;
   sayfa.goster(arg);
   rayCiz();
+}
+
+const hareketAz = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+export function hisGecis(el, { y = 6, sure = 220 } = {}) {
+  if (!el || hareketAz.matches || !el.animate) return;
+  el.animate([{ opacity: 0, transform: `translateY(${y}px)` }, { opacity: 1, transform: 'none' }], { duration: sure, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
 }
 
 function rayCiz() {

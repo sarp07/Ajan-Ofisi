@@ -7,6 +7,8 @@
   const ust = window.parent;
   if (!ust || ust === window) return;
   const yolla = (veri) => ust.postMessage({ ofisTasarim: true, ...veri }, '*');
+  // tasarım klasörüne göre sayfa yolu: /0001/en/index.html → en/index.html
+  const sayfaAdi = () => decodeURIComponent(location.pathname.split('/').slice(2).join('/') || 'index.html');
   let secimModu = false;
   let secili = null;
   let uzerinde = null;
@@ -95,7 +97,7 @@
       zincir,
       yaziDuzenlenir: salt && !!(el.innerText || '').trim(),
       kaynak: el.tagName === 'IMG' ? el.getAttribute('src') || '' : '',
-      sayfa: decodeURIComponent(location.pathname.split('/').pop() || 'index.html'),
+      sayfa: sayfaAdi(),
     };
   }
 
@@ -290,7 +292,7 @@
     tak();
     const y = Number(new URLSearchParams(location.search).get('ofisY')) || 0;
     if (y) requestAnimationFrame(() => scrollTo(0, y));
-    yolla({ tur: 'yuklendi', sayfa: decodeURIComponent(location.pathname.split('/').pop() || 'index.html'), baslik: document.title || '' });
+    yolla({ tur: 'yuklendi', sayfa: sayfaAdi(), baslik: document.title || '' });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hazir);
   else hazir();

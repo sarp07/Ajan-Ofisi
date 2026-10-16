@@ -151,6 +151,7 @@ contextBridge.exposeInMainWorld('ofis', {
   tasarimListe: cagri('tasarim:liste'),
   tasarimYeni: cagri('tasarim:yeni'),
   tasarimEtkin: cagri('tasarim:etkin'),
+  tasarimPlan: cagri('tasarim:plan'),
   tasarimIzle: cagri('tasarim:izle'),
   tasarimKlasor: cagri('tasarim:klasor'),
   tasarimDegisti: dinle('tasarim:degisti'),
