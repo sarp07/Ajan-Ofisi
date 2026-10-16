@@ -41,7 +41,7 @@ import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cek
 import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
 import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
-import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla } from './cekirdek/ek-motorlar.js';
+import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -187,6 +187,13 @@ function oturumBitti(k, kod, bilgi) {
   gonder('pty:cikis', { kat: k.anahtar, kod });
   oturumlariYayinla();
 }
+
+// mesajlaşmadan ve sohbetten gelen dosyalar: bütün oturumlar okuyabilir
+const medyaKlasoru = () => {
+  const k = path.join(app.getPath('userData'), 'medya');
+  fs.mkdirSync(k, { recursive: true });
+  return k;
+};
 
 // ---------- beynin kendiliğinden dolan hafızası ----------
 // Notlar yalnızca beynin yazmasına bağlı kalmaz: projeler, kişiler ve sahip için not açılır, her kat oturumunun özeti
@@ -410,6 +417,7 @@ function olayGeldi(ev, etiket = '') {
   const b = k.oturum.bilgi;
   // Gemini'nin olay ve araç adları Claude biçimine çevrilir (Kimi zaten aynı adları kullanır)
   if (b.motor === 'gemini') ev = geminiUyarla(ev);
+  if (b.motor === 'kimi') ev = kimiUyarla(ev, b.ekEv);
   // Codex, Kimi ve Gemini oturum kimliğini kendisi üretir: sürdürmek için ilk olaydan alınır
   if (b.motor !== 'claude' && !b.codexOturum && typeof ev.session_id === 'string' && /^[A-Za-z0-9_-]{6,80}$/.test(ev.session_id)) {
     b.codexOturum = ev.session_id;
@@ -519,9 +527,9 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
   let arg;
   if (EK_MOTORLAR.includes(motor)) {
     Object.assign(env, cikti.env);
-    arg = ekArgumanlari(motor, sirket, { surdur: eski, ekKlasorler: [skiller.klasor, ...ekDepolar(proje)] });
+    arg = ekArgumanlari(motor, sirket, { surdur: eski, ekKlasorler: [skiller.klasor, medyaKlasoru(), ...ekDepolar(proje)] });
   } else if (motor === 'claude') {
-    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, ...ekDepolar(proje).flatMap((d) => ['--add-dir', d]), ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
+    arg = [...oturumArgumanlari(sirket, { ...cikti, oturumId, surdur: eski, ad: `${sirket.ad} · ${proje.ad}` }), '--add-dir', skiller.klasor, '--add-dir', medyaKlasoru(), ...ekDepolar(proje).flatMap((d) => ['--add-dir', d]), ...mcpBayraklari('claude', { adres: mcpAdresi() + '/' + proje.id, hedef: path.join(app.getPath('userData'), 'calisma', proje.id) })];
     env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = sirket.takimModu ? '1' : '0';
   } else {
     if (apiModu) {
@@ -531,12 +539,12 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
         return { hata: 'anahtarGiris', ayrinti: String(e.message || e) };
       }
     }
-    arg = [...codexArgumanlari(sirket, cikti, { klasor, surdur: eski, ekKlasorler: ekDepolar(proje) }), ...mcpBayraklari('codex', { adres: mcpAdresi() + '/' + proje.id })];
+    arg = [...codexArgumanlari(sirket, cikti, { klasor, surdur: eski, ekKlasorler: [medyaKlasoru(), ...ekDepolar(proje)] }), ...mcpBayraklari('codex', { adres: mcpAdresi() + '/' + proje.id })];
   }
   const k = katAl(proje.id);
   k.sohbet.length = 0;
   try {
-    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, codexOturum: motor !== 'claude' && eski ? eski : '', projeId: proje.id, projeAd: proje.ad, proje: klasor, surdurulen: !!eski, devirVar: !!devir, baslangic: Date.now() } });
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ekEv: cikti && cikti.ev, codexOturum: motor !== 'claude' && eski ? eski : '', projeId: proje.id, projeAd: proje.ad, proje: klasor, surdurulen: !!eski, devirVar: !!devir, baslangic: Date.now() } });
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
@@ -637,7 +645,7 @@ async function beyinBaslat({ sutun, satir }) {
   }
   k.sohbet.length = 0;
   try {
-    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, beyin: true, proje: klasor, baslangic: Date.now() } });
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ekEv: cikti && cikti.ev, beyin: true, proje: klasor, baslangic: Date.now() } });
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
@@ -956,7 +964,7 @@ async function ozelBaslat({ katId, ajanId, surdur, sutun, satir }) {
   }
   k.sohbet.length = 0;
   try {
-    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ozel: true, katId: o.katId, ajanId: o.ajanId, codexOturum: motor !== 'claude' && eski ? eski : '', proje: klasor, surdurulen: !!eski, baslangic: Date.now() } });
+    k.oturum.baslat({ yol, arg, cwd: klasor, env, sutun, satir, bilgi: { oturumId, motor, ekEv: cikti && cikti.ev, ozel: true, katId: o.katId, ajanId: o.ajanId, codexOturum: motor !== 'claude' && eski ? eski : '', proje: klasor, surdurulen: !!eski, baslangic: Date.now() } });
   } catch (e) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
@@ -1972,15 +1980,37 @@ function ipcKur() {
     return odaDosyalari(o.katId, o.ajanId);
   });
   // Dosya ekleme: seçilen dosyalar odanın ekler klasörüne kopyalanır, kişi oradan okur
+  // Sohbet ekleri: özel odada odanın ekler klasörü, beyin ve katlarda ortak medya klasörü (oturumlar bu klasörü okuyabilir)
+  const ekKlasoru = (anahtar) => {
+    if (String(anahtar || '').startsWith('ozel:')) {
+      const o = odaCozIpc(anahtar);
+      return path.join(odaHazirla(o.katId, o.ajanId), 'ekler');
+    }
+    const k = path.join(app.getPath('userData'), 'medya', 'sohbet');
+    fs.mkdirSync(k, { recursive: true });
+    return k;
+  };
+  h('sohbet:pano', (anahtar, veri, mime) => {
+    try {
+      const uzanti = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[String(mime)] || 'png';
+      const tampon = Buffer.from(String(veri || ''), 'base64');
+      if (!tampon.length || tampon.length > 25 * 1024 * 1024) return { hata: 'genel' };
+      const ad = `pano-${Date.now().toString(36)}.${uzanti}`;
+      const yol = path.join(ekKlasoru(anahtar), ad);
+      fs.writeFileSync(yol, tampon);
+      return { tamam: true, eklenen: [{ ad, yol }] };
+    } catch (e) {
+      return { hata: 'genel', ayrinti: String(e.message || e) };
+    }
+  });
   h('oda:ekle', async (anahtar, yollar) => {
-    const o = odaCozIpc(anahtar);
     let kaynak = Array.isArray(yollar) ? yollar.filter((y) => typeof y === 'string') : null;
     if (!kaynak || !kaynak.length) {
       const s = await dialog.showOpenDialog(pencere, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Belge ve görsel', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'md', 'csv', 'json', 'docx', 'xlsx'] }, { name: '*', extensions: ['*'] }] });
       if (s.canceled) return { iptal: true };
       kaynak = s.filePaths;
     }
-    const hedef = path.join(odaHazirla(o.katId, o.ajanId), 'ekler');
+    const hedef = ekKlasoru(anahtar);
     const eklenen = [];
     for (const y of kaynak.slice(0, 10)) {
       try {
@@ -2792,6 +2822,14 @@ function pencereAc() {
     },
   });
   pencere.once('ready-to-show', () => pencere.show());
+  // sağ tık: kes, kopyala, yapıştır, tümünü seç (seçili metin ve yazı alanlarında)
+  pencere.webContents.on('context-menu', (_e, p) => {
+    const tr = depo.veri.dil !== 'en';
+    const ogeler = [];
+    if (p.isEditable) ogeler.push({ role: 'cut', label: tr ? 'Kes' : 'Cut', enabled: p.editFlags.canCut }, { role: 'copy', label: tr ? 'Kopyala' : 'Copy', enabled: p.editFlags.canCopy }, { role: 'paste', label: tr ? 'Yapıştır' : 'Paste', enabled: p.editFlags.canPaste }, { type: 'separator' }, { role: 'selectAll', label: tr ? 'Tümünü seç' : 'Select all' });
+    else if (p.selectionText) ogeler.push({ role: 'copy', label: tr ? 'Kopyala' : 'Copy' }, { role: 'selectAll', label: tr ? 'Tümünü seç' : 'Select all' });
+    if (ogeler.length) Menu.buildFromTemplate(ogeler).popup({ window: pencere });
+  });
   // öne gelince güncellemeye yeniden bakılır (uzun süre açık kalan uygulama yeni sürümü kaçırmasın)
   pencere.on('focus', () => guncelleyici && guncelleyici.tazele());
   pencere.webContents.setWindowOpenHandler(({ url }) => {

@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('ofis', {
   odaKur: cagri('oda:kur'),
   odaDosyalar: cagri('oda:dosyalar'),
   odaEkle: cagri('oda:ekle'),
+  sohbetPano: cagri('sohbet:pano'),
   odaAc: cagri('oda:ac'),
   odaKlasor: cagri('oda:klasor'),
   odaDisaAktar: cagri('oda:disaAktar'),

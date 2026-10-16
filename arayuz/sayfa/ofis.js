@@ -1070,16 +1070,35 @@ export function ofisSayfasi({ git }) {
     });
   }
 
+  // Ekler: özel odada odanın klasörüne, beyin ve katlarda ortak medya klasörüne kopyalanır; mesajda yolu gider
   async function dosyaEkle(yollar) {
-    if (!ozelMi()) return;
-    const r = await api.odaEkle(depo.gorunum, yollar);
+    const r = await api.odaEkle(ozelMi() ? depo.gorunum : seciliKat(), yollar);
     if (!r || r.hata) return r && r.hata && bildir(hataMetni(r), true);
     if (r.iptal) return;
     bekleyenEkler = [...bekleyenEkler, ...r.eklenen].slice(0, 10);
     ekCiz();
-    odaDosyalariYukle();
+    if (ozelMi()) odaDosyalariYukle();
     sohbetGiris.focus();
   }
+
+  // panodan resim yapıştırma (ekran görüntüsü, kopyalanan fotoğraf)
+  sohbetGiris.addEventListener('paste', async (e) => {
+    const resimler = [...((e.clipboardData && e.clipboardData.items) || [])].filter((x) => x.kind === 'file' && /^image\//.test(x.type));
+    if (!resimler.length) return;
+    e.preventDefault();
+    for (const oge of resimler.slice(0, 5)) {
+      const dosya = oge.getAsFile();
+      if (!dosya) continue;
+      const veri = await new Promise((coz) => {
+        const fr = new FileReader();
+        fr.onload = () => coz(String(fr.result).split(',')[1] || '');
+        fr.readAsDataURL(dosya);
+      });
+      const r = await api.sohbetPano(ozelMi() ? depo.gorunum : seciliKat(), veri, dosya.type);
+      if (r && r.eklenen) bekleyenEkler = [...bekleyenEkler, ...r.eklenen].slice(0, 10);
+    }
+    ekCiz();
+  });
 
   function ekCiz() {
     ekKap.hidden = !bekleyenEkler.length;
@@ -1093,14 +1112,12 @@ export function ofisSayfasi({ git }) {
 
   // sürükle bırak: özel odada dosyalar sohbet alanına bırakılabilir
   sohbet.addEventListener('dragover', (e) => {
-    if (!ozelMi()) return;
     e.preventDefault();
     sohbet.classList.add('birak');
   });
   sohbet.addEventListener('dragleave', () => sohbet.classList.remove('birak'));
   sohbet.addEventListener('drop', (e) => {
     sohbet.classList.remove('birak');
-    if (!ozelMi()) return;
     e.preventDefault();
     const yollar = [...(e.dataTransfer.files || [])].map((f) => api.dosyaYolu(f)).filter(Boolean);
     if (yollar.length) dosyaEkle(yollar);
@@ -1148,7 +1165,7 @@ export function ofisSayfasi({ git }) {
     );
     sohbetGiris.disabled = !acik;
     sohbetGonder.disabled = !acik;
-    ekDugme.hidden = !ozelMi();
+    ekDugme.hidden = false;
     ekDugme.disabled = !acik;
     if (!kayit) {
       mikDugme.disabled = !acik;
@@ -1185,7 +1202,9 @@ export function ofisSayfasi({ git }) {
       sohbetListe,
       liste.map((m) => {
         const kim = m.kim === 'sen' ? tt('sohbet.sen') : m.ad || tt('sohbet.sistem');
-        const ust = h('div', { class: 'mesajUst' }, h('b', null, kim), h('time', null, saatYaz(m.z)));
+        // her mesajın metni tek tıkla kopyalanır (mesajlar fareyle de seçilebilir)
+        const kopyaDugme = h('button', { type: 'button', class: 'mesajKopya', title: tt('genel.kopyala'), 'aria-label': tt('genel.kopyala'), onclick: async () => bildir((await kopyala(m.metin || '')) ? tt('genel.kopyalandi') : tt('genel.kopyala')) }, ikon('kopya', 12));
+        const ust = h('div', { class: 'mesajUst' }, h('b', null, kim), h('time', null, saatYaz(m.z)), kopyaDugme);
         if (m.tur === 'onay') {
           return h(
             'li',

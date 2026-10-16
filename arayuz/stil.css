@@ -6722,3 +6722,38 @@ body.surukleX * {
     max-height: 40%;
   }
 }
+
+/* sohbet: mesajlar seçilip kopyalanabilir */
+.sohbetListe .mesaj,
+.sohbetListe .mesaj * {
+  user-select: text;
+  cursor: auto;
+}
+
+.mesajUst {
+  position: relative;
+}
+
+.mesajKopya {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--sonuk);
+  padding: 2px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  display: inline-grid;
+  place-items: center;
+}
+
+.mesaj:hover .mesajKopya,
+.mesajKopya:focus-visible {
+  opacity: 1;
+}
+
+.mesajKopya:hover {
+  color: var(--yazi);
+  background: var(--panel3);
+}

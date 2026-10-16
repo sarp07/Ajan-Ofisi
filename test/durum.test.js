@@ -582,5 +582,17 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.ok(ayar.hooks.BeforeAgent && ayar.hooks.AfterAgent && ayar.hooks.BeforeTool);
 }
 
+// Kimi: parçalı istem metne çevrilir, cevap oturum kaydından okunur
+{
+  const { kimiUyarla } = await import('../cekirdek/ek-motorlar.js');
+  assert.equal(kimiUyarla({ hook_event_name: 'UserPromptSubmit', prompt: [{ type: 'text', text: 'selam' }] }).prompt, 'selam');
+  const ev = path.join(tmp, 'kimi-ev-test');
+  const kl = path.join(ev, 'sessions', 'wd_x', 'session_1', 'agents', 'main');
+  fs.mkdirSync(kl, { recursive: true });
+  const satir = (rol, metin, kaynak) => JSON.stringify({ type: 'agent.message.appended', message: { message: { role: rol, content: [{ type: 'text', text: metin }] }, meta: { source: kaynak } } });
+  fs.writeFileSync(path.join(kl, 'wire.jsonl'), [satir('user', 'eski', 'input'), satir('assistant', 'eski cevap', 'llm'), satir('user', 'yeni', 'input'), satir('assistant', 'Merhaba patron', 'llm')].join('\n'));
+  assert.equal(kimiUyarla({ hook_event_name: 'Stop', session_id: 'session_1' }, ev).last_assistant_message, 'Merhaba patron', 'son girişten sonraki cevap');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

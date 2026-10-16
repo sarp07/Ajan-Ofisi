@@ -87,7 +87,7 @@ export function ekGirisDurumu(motor) {
 
 // API anahtarıyla çalışırken oturuma verilen ortam
 export function ekAnahtarOrtami(motor, anahtar) {
-  if (motor === 'kimi') return { KIMI_MODEL_NAME: 'kimi-k2.6', KIMI_MODEL_API_KEY: anahtar, KIMI_MODEL_BASE_URL: 'https://api.moonshot.ai/v1', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_CAPABILITIES: 'image_in,thinking' };
+  if (motor === 'kimi') return { KIMI_MODEL_NAME: 'kimi-k2.6', KIMI_MODEL_API_KEY: anahtar, KIMI_MODEL_BASE_URL: process.env.AJAN_OFIS_KIMI_TABAN || 'https://api.moonshot.ai/v1', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_CAPABILITIES: 'image_in,thinking' };
   return { GEMINI_API_KEY: anahtar };
 }
 export const EK_ANAHTAR_DEGISKENI = { kimi: 'KIMI_MODEL_API_KEY', gemini: 'GEMINI_API_KEY' };
@@ -112,6 +112,58 @@ const GEMINI_ARAC = {
   write_todos: 'TodoWrite',
   save_memory: 'Memory',
 };
+
+// Kimi: istem parçalı gelir ([{type:'text', text}]), Stop olayı cevabı taşımaz.
+// Cevap oturumun kayıt dosyasından (sessions/<klasör>/<oturum>/agents/main/wire.jsonl) okunur: son kullanıcı girişinden sonraki asistan metni.
+const metinParcalari = (icerik) => (Array.isArray(icerik) ? icerik.filter((p) => p && p.type === 'text').map((p) => p.text || '').join('\n') : typeof icerik === 'string' ? icerik : '');
+
+export function kimiSonCevap(ev, oturum) {
+  if (!ev || !oturum) return '';
+  try {
+    const kok = path.join(ev, 'sessions');
+    for (const d of fs.readdirSync(kok)) {
+      const dosya = path.join(kok, d, oturum, 'agents', 'main', 'wire.jsonl');
+      if (!fs.existsSync(dosya)) continue;
+      // yalnızca dosyanın sonu okunur (uzun oturumlarda tamamını okumamak için)
+      const boyut = fs.statSync(dosya).size;
+      const fd = fs.openSync(dosya, 'r');
+      const al = Math.min(boyut, 2 * 1024 * 1024);
+      const tampon = Buffer.alloc(al);
+      fs.readSync(fd, tampon, 0, al, boyut - al);
+      fs.closeSync(fd);
+      const satirlar = tampon.toString('utf8').split('\n');
+      const parcalar = [];
+      for (const satir of satirlar) {
+        if (!satir.includes('agent.message.appended')) continue;
+        let j;
+        try {
+          j = JSON.parse(satir);
+        } catch {
+          continue;
+        }
+        const m = j.message && j.message.message;
+        const meta = (j.message && j.message.meta) || {};
+        if (!m) continue;
+        if (m.role === 'user' && meta.source === 'input') parcalar.length = 0;
+        else if (m.role === 'assistant') {
+          const t = metinParcalari(m.content).trim();
+          if (t) parcalar.push(t);
+        }
+      }
+      return parcalar.join('\n\n');
+    }
+  } catch {
+    /* kayıt okunamazsa cevap boş kalır */
+  }
+  return '';
+}
+
+export function kimiUyarla(ev, kimiEv) {
+  if (!ev || typeof ev !== 'object') return ev;
+  if (ev.hook_event_name === 'UserPromptSubmit' && typeof ev.prompt !== 'string') return { ...ev, prompt: metinParcalari(ev.prompt) };
+  if (ev.hook_event_name === 'Stop' && !ev.last_assistant_message) return { ...ev, last_assistant_message: kimiSonCevap(kimiEv, ev.session_id) };
+  return ev;
+}
 
 export function geminiUyarla(ev) {
   if (!ev || typeof ev !== 'object') return ev;
