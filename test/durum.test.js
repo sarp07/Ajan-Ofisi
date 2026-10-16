@@ -594,5 +594,17 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.equal(kimiUyarla({ hook_event_name: 'Stop', session_id: 'session_1' }, ev).last_assistant_message, 'Merhaba patron', 'son girişten sonraki cevap');
 }
 
+// Playwright: uygulamanın kurduğu playwright-cli oturum PATH'inin başına eklenir, kurulu değilse ortam değişmez
+{
+  const { playwrightOrtami, playwrightKlasoru } = await import('../cekirdek/playwright.js');
+  const kl = path.join(tmp, 'araclar');
+  const env = { PATH: '/usr/bin' };
+  assert.equal(playwrightOrtami(env, kl), env);
+  fs.mkdirSync(playwrightKlasoru(kl), { recursive: true });
+  fs.writeFileSync(path.join(playwrightKlasoru(kl), process.platform === 'win32' ? 'playwright-cli.cmd' : 'playwright-cli'), '');
+  const yeni = playwrightOrtami(playwrightOrtami(env, kl), kl);
+  assert.equal(yeni.PATH, [playwrightKlasoru(kl), '/usr/bin'].join(path.delimiter), 'bir kez ve başa eklenir');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

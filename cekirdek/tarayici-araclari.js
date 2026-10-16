@@ -4,8 +4,8 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
-export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_yeni', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
+export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus', 'tarayici_fare'];
 
 const KURAL =
   'Paylaşım yapan, mesaj gönderen, silen, satın alan ya da hesap ayarını değiştiren bir tıklama veya yazmadan ÖNCE sahip_onayi ile sahibe ne yapacağını sor. Giriş ekranı çıkarsa dur: şifreyi asla isteme ve yazma, sahibe Tarayıcı sayfasından kendisinin giriş yapmasını söyle.';
@@ -24,6 +24,16 @@ export function tarayiciAraclari(ops) {
       sema: nesne({ hesap_id: hesapId, adres: yazi('Gidilecek tam adres (isteğe bağlı)') }, ['hesap_id']),
       calistir: async (g) => ops.ac(String(g.hesap_id), g.adres ? String(g.adres) : ''),
     },
+    tarayici_yeni: {
+      aciklama: 'Hesap gerektirmeyen yeni bir sekme açar ve adrese gider (canlı site, yerel sunucu, belge, rakip site). Dönen hesap_id ile öbür tarayici_ araçlarını kullan. Katın en çok 6 serbest sekmesi olur; işin bitince tarayici_kapat ile kapat.',
+      sema: nesne({ adres: yazi('Tam adres (https://... ya da http://localhost:...)'), ad: yazi('Sekmenin kısa adı (isteğe bağlı)') }, ['adres']),
+      calistir: async (g) => ops.yeni(String(g.adres), g.ad ? String(g.ad) : ''),
+    },
+    tarayici_fare: {
+      aciklama: 'Gerçek fare kullanır: ekran görüntüsündeki (tarayici_goruntu) x,y noktasına tıklar, çift tıklar, sağ tıklar, üzerine gelir ya da x2,y2 noktasına sürükler. Öğe numarasıyla bulunamayan yerler için (tuval, harita, sürükle bırak, menü) kullan. ' + KURAL,
+      sema: nesne({ hesap_id: hesapId, x: { type: 'number' }, y: { type: 'number' }, eylem: { type: 'string', enum: ['tikla', 'cift', 'sag', 'uzerine', 'surukle'] }, x2: { type: 'number' }, y2: { type: 'number' } }, ['hesap_id', 'x', 'y']),
+      calistir: async (g) => ops.fare(String(g.hesap_id), { x: g.x, y: g.y, eylem: g.eylem || 'tikla', x2: g.x2, y2: g.y2 }),
+    },
     tarayici_git: {
       aciklama: 'Açık tarayıcıda bir adrese gider.',
       sema: nesne({ hesap_id: hesapId, adres: yazi('Tam adres (https://...)') }, ['hesap_id', 'adres']),
@@ -35,9 +45,12 @@ export function tarayiciAraclari(ops) {
       calistir: async (g) => ops.metin(String(g.hesap_id)),
     },
     tarayici_goruntu: {
-      aciklama: 'Açık sayfanın ekran görüntüsünü verir.',
+      aciklama: 'Açık sayfanın ekran görüntüsünü verir. Görüntüdeki bir noktaya tarayici_fare ile tıklayabilirsin.',
       sema: nesne({ hesap_id: hesapId }, ['hesap_id']),
-      calistir: async (g) => ({ icerik: [{ type: 'image', data: await ops.goruntu(String(g.hesap_id)), mimeType: 'image/png' }] }),
+      calistir: async (g) => {
+        const r = await ops.goruntu(String(g.hesap_id));
+        return { icerik: [{ type: 'image', data: r.veri, mimeType: 'image/png' }, { type: 'text', text: `Görüntü ${r.en}x${r.boy} piksel. tarayici_fare koordinatları bu görüntüye göredir (sol üst 0,0).` }] };
+      },
     },
     tarayici_konsol: {
       aciklama: 'Açık sayfanın konsol kayıtlarını verir: hatalar, uyarılar, yüklenemeyen adresler. Web testinde sayfayı açtıktan sonra mutlaka kontrol et.',
@@ -65,7 +78,7 @@ export function tarayiciAraclari(ops) {
       calistir: async (g) => ops.yaz(String(g.hesap_id), { metin: String(g.metin), no: g.no ? String(g.no) : '', etiket: g.etiket ? String(g.etiket) : '', secici: g.secici ? String(g.secici) : '', temizle: !!g.temizle, enter: !!g.enter }),
     },
     tarayici_tus: {
-      aciklama: 'Klavye tuşuna basar: Enter, Tab, Escape, Backspace, ArrowDown, ArrowUp, PageDown ya da Cmd+A (tümünü seç), Cmd+C, Cmd+V, Cmd+X, Cmd+Z gibi birleşimler; bunlar sayfada gerçekten çalışır. ' + KURAL,
+      aciklama: 'Klavye tuşuna basar: tek harf ya da işaret (a, w, /, 1), Space, Enter, Tab, Escape, Backspace, ArrowDown, ArrowUp, PageDown ya da Cmd+A (tümünü seç), Cmd+C, Cmd+V, Cmd+X, Cmd+Z gibi birleşimler; bunlar sayfada gerçekten çalışır. ' + KURAL,
       sema: nesne({ hesap_id: hesapId, tus: yazi('Tuş ya da birleşim') }, ['hesap_id', 'tus']),
       calistir: async (g) => ops.tus(String(g.hesap_id), String(g.tus)),
     },

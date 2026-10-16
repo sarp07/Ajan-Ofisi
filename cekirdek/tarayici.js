@@ -281,8 +281,53 @@ export class TarayiciOdasi {
       await new Promise((r) => setTimeout(r, 350));
     }
     if (!img || img.isEmpty()) throw new Error('Ekran görüntüsü alınamadı: sayfa henüz çizilmedi. Biraz bekleyip yeniden dene ya da tarayici_metin ile oku.');
-    const kucuk = img.getSize().width > 1400 ? img.resize({ width: 1400 }) : img;
-    return kucuk.toPNG().toString('base64');
+    // görüntü sayfanın CSS genişliğine indirilir: görüntüdeki bir nokta tarayici_fare ile aynı koordinatla tıklanır
+    let css = 0;
+    try {
+      css = Number(await wc.executeJavaScript('innerWidth')) || 0;
+    } catch {
+      css = 0;
+    }
+    const hedefEn = Math.min(1400, css || img.getSize().width);
+    const kucuk = img.getSize().width !== hedefEn ? img.resize({ width: hedefEn }) : img;
+    const s = this.sekmeler.get(id);
+    if (s) s.olcek = css ? css / hedefEn : 1;
+    const { width: en, height: boy } = kucuk.getSize();
+    return { veri: kucuk.toPNG().toString('base64'), en, boy };
+  }
+
+  // Fare: ekran görüntüsündeki koordinatlarla gerçek fare olayı. eylem: tikla, cift, sag, uzerine, surukle (x2, y2'ye)
+  async fare(id, { x, y, eylem = 'tikla', x2, y2 }) {
+    const wc = this.sekme(id);
+    const s = this.sekmeler.get(id);
+    const k = (s && s.olcek) || 1;
+    const X = Math.round(Number(x) * k);
+    const Y = Math.round(Number(y) * k);
+    if (!Number.isFinite(X) || !Number.isFinite(Y)) throw new Error('Geçersiz koordinat');
+    const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+    wc.sendInputEvent({ type: 'mouseMove', x: X, y: Y });
+    await bekle(40);
+    if (eylem === 'uzerine') return { tamam: true, x: X, y: Y };
+    if (eylem === 'surukle') {
+      const X2 = Math.round(Number(x2) * k);
+      const Y2 = Math.round(Number(y2) * k);
+      wc.sendInputEvent({ type: 'mouseDown', x: X, y: Y, button: 'left', clickCount: 1 });
+      for (let i = 1; i <= 12; i++) {
+        wc.sendInputEvent({ type: 'mouseMove', x: Math.round(X + ((X2 - X) * i) / 12), y: Math.round(Y + ((Y2 - Y) * i) / 12), button: 'left', modifiers: ['leftButtonDown'] });
+        await bekle(16);
+      }
+      wc.sendInputEvent({ type: 'mouseUp', x: X2, y: Y2, button: 'left', clickCount: 1 });
+      return { tamam: true };
+    }
+    const tus = eylem === 'sag' ? 'right' : 'left';
+    const say = eylem === 'cift' ? 2 : 1;
+    for (let i = 1; i <= say; i++) {
+      wc.sendInputEvent({ type: 'mouseDown', x: X, y: Y, button: tus, clickCount: i });
+      wc.sendInputEvent({ type: 'mouseUp', x: X, y: Y, button: tus, clickCount: i });
+      await bekle(30);
+    }
+    await bekle(200);
+    return { tamam: true, x: X, y: Y };
   }
 
   // Sayfanın bütün çerçeveleri (ana sayfa ve iç çerçeveler). Sıra numarası öğe numarasının önekidir.
@@ -405,6 +450,8 @@ export class TarayiciOdasi {
     const kod = { Enter: 'Enter', Tab: 'Tab', Escape: 'Escape', Esc: 'Escape', Backspace: 'Backspace', Delete: 'Delete', ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right', PageDown: 'PageDown', PageUp: 'PageUp', Space: 'Space' }[ana] || ana;
     wc.sendInputEvent({ type: 'keyDown', keyCode: kod, modifiers: mod });
     if (ana === 'Enter' && !mod.length) wc.sendInputEvent({ type: 'char', keyCode: '\r' });
+    // tek harf, rakam ya da işaret (oyun tuşları, "/" kısayolu): yazı olarak da sayfaya düşer
+    else if ([...ana].length === 1 && !mod.some((m) => m === 'meta' || m === 'control' || m === 'alt')) wc.sendInputEvent({ type: 'char', keyCode: mod.includes('shift') ? ana.toUpperCase() : ana });
     wc.sendInputEvent({ type: 'keyUp', keyCode: kod, modifiers: mod });
     return { tamam: true };
   }

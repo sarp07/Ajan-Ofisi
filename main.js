@@ -42,6 +42,7 @@ import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, port
 import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
+import { playwrightKur, playwrightOrtami, PLAYWRIGHT_PAKET } from './cekirdek/playwright.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
 const KOK = path.dirname(fileURLToPath(import.meta.url));
@@ -311,6 +312,25 @@ async function claudeYenile() {
 // ---------- motorlar ----------
 const durumlar = () => Object.fromEntries(MOTORLAR.map((m) => [m, aracAl(m) && { ...aracAl(m), giris: girisler[m] }]));
 const codexApiKlasoru = () => path.join(app.getPath('userData'), 'codex-api');
+const araclarKlasoru = () => path.join(app.getPath('userData'), 'araclar');
+
+// Playwright CLI ekibin varsayılan test tarayıcısıdır: kabukta yoksa arka planda bir kez kurulur
+let playwrightKurulumu = null;
+let ortamHazir = false;
+function playwrightHazirla() {
+  if (playwrightKurulumu || SINAMA || !ortamHazir) return;
+  playwrightKurulumu = playwrightKur(ortam, araclarKlasoru())
+    .then((d) => {
+      if (d === 'kuruldu') gunluk('playwright', 'kuruldu', PLAYWRIGHT_PAKET);
+      if (d === 'npmYok') gunluk('playwright', 'npm bulunamadı, kurulmadı');
+      ortam = playwrightOrtami(ortam, araclarKlasoru());
+    })
+    .catch((e) => {
+      gunluk('playwright', 'kurulamadı', String(e.message || e));
+      // ağ hatasıysa bir saat sonra yeniden denenir
+      setTimeout(() => (playwrightKurulumu = null), 3600000);
+    });
+}
 
 function codexModelCoz() {
   const v = codexVarsayilan(codexListe);
@@ -1543,9 +1563,12 @@ async function whatsappMesaji({ numara, metin, ses, dosyalar }) {
 // ---------- tarayıcı odası ----------
 // Bütün katların bağlı hesapları. Kişisel hesaplar da bir katta durur (ör. "Kişisel" adlı kat).
 // Projenin test adresi varsa o katta "Test" sekmesi de olur: web testleri burada yapılır.
+// Serbest sekmeler: ajanların hesap gerektirmeden açtığı sekmeler (canlı site, yerel sunucu, belge). Katın kendisine aittir.
+const serbestSekmeler = new Map(); // kat -> [{ id, platform, ad, adres, katId, kat, serbest }]
 const tumHesaplar = () =>
   depo.veri.projeler.flatMap((p) => [
     ...p.hesaplar.map((h) => ({ ...h, katId: p.id, kat: p.ad })),
+    ...(serbestSekmeler.get(p.id) || []),
     ...(/^https?:\/\//i.test(p.test.adres) ? [{ id: 'test-' + p.id, platform: 'diger', ad: 'Test', not: p.test.adres, adres: p.test.adres, katId: p.id, kat: p.ad, test: true }] : []),
   ]);
 
@@ -1627,7 +1650,32 @@ function tarayiciIslemleri(kapsam) {
     alanlar: (id) => (hesap(id), oda.alanlar(id)),
     tus: (id, tus) => (hesap(id), oda.tus(id, tus)),
     kaydir: (id, s) => (hesap(id), oda.kaydir(id, s)),
-    kapat: (id) => (hesap(id), oda.kapat(id), 'Sekme kapatıldı.'),
+    kapat: (id) => {
+      const h = hesap(id);
+      oda.kapat(id);
+      if (h.serbest) serbestSekmeler.set(h.katId, (serbestSekmeler.get(h.katId) || []).filter((x) => x.id !== id));
+      return 'Sekme kapatıldı.';
+    },
+    fare: (id, g) => (hesap(id), oda.fare(id, g)),
+    yeni: async (adres, ad) => {
+      const katId = kapsam === 'beyin' ? (depo.veri.projeler.find((p) => p.tur === 'kisisel') || depo.veri.projeler[0] || {}).id : (ozelCoz(kapsam) || { katId: kapsam }).katId;
+      if (!katId || !depo.proje(katId)) throw new Error('Sekmenin açılacağı kat bulunamadı.');
+      let u;
+      try {
+        u = new URL(String(adres));
+        if (!/^https?:$/.test(u.protocol)) throw new Error();
+      } catch {
+        throw new Error('Geçersiz adres: http:// ya da https:// ile başlamalı.');
+      }
+      if (whatsappAdresi(u.toString())) throw new Error(WHATSAPP_YASAK);
+      const liste = serbestSekmeler.get(katId) || [];
+      if (liste.length >= 6) throw new Error('Bu katın 6 serbest sekmesi açık. Birini tarayici_kapat ile kapat.');
+      const h = { id: 'serbest-' + crypto.randomBytes(4).toString('hex'), platform: 'diger', ad: ad || u.host, not: u.toString(), adres: u.toString(), katId, kat: depo.proje(katId).ad, serbest: true };
+      serbestSekmeler.set(katId, [...liste, h]);
+      oda.ac(h);
+      await oda.gezin(h.id, u.toString());
+      return { hesap_id: h.id, ...oda.bilgi(h.id) };
+    },
     onay: (soru) => sahipOnayi(kapsam === 'beyin' ? 'beyin' : kapsam, soru),
     telegramYaz: (kime, metin, dosya = '') => telegramYaz(kapsam, kime, metin, dosya),
     whatsappYaz: async (hedef, metin, dosya = '') => {
@@ -1733,6 +1781,8 @@ function mcpAraclari(kapsam) {
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
 // Yalnızca okuyan komutlar: hangi izin modunda olursa olsun sorulmaz (değiştiren, silen, ağa yazan komut yok)
 const OKUMA_KOMUTLARI = ['git status', 'git log', 'git diff', 'git show', 'git branch', 'git rev-parse', 'git remote -v', 'git worktree list', 'git ls-files', 'git blame', 'ls', 'pwd', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'tree', 'which', 'file', 'stat', 'du', 'npm test', 'npm run test', 'npm run lint', 'npm run typecheck', 'npm ls', 'npx tsc --noEmit', 'gh pr list', 'gh pr view', 'gh pr status', 'gh pr checks', 'gh run list', 'gh run view', 'gh repo view', 'gh issue list', 'gh issue view'].map((k) => `Bash(${k}:*)`);
+// Playwright test tarayıcısı: ayrı, boş bir tarayıcı açar; sahibin tarayıcısına ve hesaplarına dokunmaz
+const TEST_TARAYICI_KOMUTLARI = ['playwright-cli', 'npx playwright', 'npx @playwright/cli', 'npx -y @playwright/cli'].map((k) => `Bash(${k}:*)`);
 
 // Sormadan çalışabilen ofis araçları (motorların izin listelerine girer)
 function serbestAraclar({ beyin, ozel }) {
@@ -1749,7 +1799,7 @@ function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
     fs.mkdirSync(hedef, { recursive: true });
     fs.writeFileSync(dosya, JSON.stringify({ mcpServers: { [MCP_ADI]: { type: 'http', url: adres } } }, null, 2));
     // okuma amaçlı komutlar her izin modunda sorulmaz
-    return ['--mcp-config', dosya, '--allowedTools', [...serbest.map((a) => `mcp__${MCP_ADI}__${a}`), ...OKUMA_KOMUTLARI].join(',')];
+    return ['--mcp-config', dosya, '--allowedTools', [...serbest.map((a) => `mcp__${MCP_ADI}__${a}`), ...OKUMA_KOMUTLARI, ...TEST_TARAYICI_KOMUTLARI].join(',')];
   }
   // sahip_onayi sahibin cevabını 10 dakikaya kadar bekler: araç zaman aşımı buna göre uzatılır (varsayılan 60 sn)
   const arg = ['-c', `mcp_servers.${MCP_ADI}.url=${JSON.stringify(adres)}`, '-c', `mcp_servers.${MCP_ADI}.default_tools_approval_mode="approve"`, '-c', `mcp_servers.${MCP_ADI}.tool_timeout_sec=900`];
@@ -2061,7 +2111,7 @@ function ipcKur() {
   });
 
   h('claude:yenile', async () => {
-    ortam = await kabukOrtami();
+    ortam = playwrightOrtami(await kabukOrtami(), araclarKlasoru());
     await motorlarYenile();
     return { claude, motorlar: motorBilgi() };
   });
@@ -2752,7 +2802,10 @@ async function baglantiIzle() {
     gonder('baglanti', { cevrimici });
     if (cevrimici && guncelleyici) guncelleyici.tazele(60000);
   }
-  if (cevrimici) onerilenSkilleriKur();
+  if (cevrimici) {
+    onerilenSkilleriKur();
+    playwrightHazirla();
+  }
   setTimeout(baglantiIzle, cevrimici ? 10000 : 3000);
 }
 
@@ -2993,7 +3046,8 @@ if (!app.requestSingleInstanceLock()) {
 
     // Claude Code'u arka planda bul: pencere beklemesin
     kabukOrtami().then(async (env) => {
-      ortam = env;
+      ortam = playwrightOrtami(env, araclarKlasoru());
+      ortamHazir = true;
       servisler.ortamAyarla(env);
       simulator.ortamAyarla(env);
       await motorlarYenile();
