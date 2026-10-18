@@ -693,5 +693,28 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   }
 }
 
+// WhatsApp hafızası: tekrar yazılmaz, numaraya ve kelimeye göre aranır, yeniden açılınca geri gelir
+{
+  const { WhatsappKaydi } = await import('../cekirdek/whatsapp-kayit.js');
+  const kl = path.join(tmp, 'wp-kayit');
+  const k = new WhatsappKaydi(kl);
+  assert.ok(k.ekle({ id: 'a1', z: 1000, numara: '905424901812', kimden: 'Sü', yon: 'gelen', metin: 'Katman 3 olsun' }));
+  assert.ok(!k.ekle({ id: 'a1', z: 1000, numara: '905424901812', metin: 'Katman 3 olsun' }), 'aynı mesaj iki kez yazılmaz');
+  k.ekle({ id: 'a2', z: 2000, numara: '+90 542 490 18 12', yon: 'giden', metin: 'Aksesuar ne olsun?' });
+  k.ekle({ id: 'a3', z: 1500, numara: '905551112233', kimden: 'Ali', metin: 'merhaba' });
+  assert.ok(!k.ekle({ id: 'a4', z: 3000, numara: '905551112233', metin: '' }), 'boş mesaj yazılmaz');
+  assert.deepEqual(k.ara({ numaralar: ['5424901812'] }).map((m) => m.id), ['a1', 'a2'], 'numaranın son 10 hanesiyle eşleşir');
+  assert.deepEqual(k.ara({ sorgu: 'katman' }).map((m) => m.id), ['a1']);
+  assert.deepEqual(k.ara({}).map((m) => m.id), ['a1', 'a3', 'a2'], 'zamana göre sıralı');
+  k.konusuldu('+90 542 490 18 12');
+  k.sonGelen = 1500;
+  const k2 = new WhatsappKaydi(kl);
+  assert.equal(k2.ara({}).length, 3, 'kayıt diskten geri gelir');
+  assert.ok(k2.konusulduMu('905424901812') && !k2.konusulduMu('905551112233'));
+  assert.equal(k2.sonGelen, 1500);
+  assert.equal(k2.kisiler()[0].numara, '905424901812', 'numara ülke koduyla saklanır');
+  assert.equal(k2.adi('+90 542 490 18 12'), 'Sü');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

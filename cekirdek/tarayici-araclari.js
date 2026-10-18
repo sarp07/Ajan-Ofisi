@@ -4,7 +4,7 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_yeni', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'tarayici_indirilenler', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_yeni', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'tarayici_indirilenler', 'sahip_onayi', 'whatsapp_yaz', 'whatsapp_gecmis', 'telegram_yaz'];
 export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus', 'tarayici_fare', 'tarayici_dosya_yukle'];
 
 const KURAL =
@@ -106,6 +106,11 @@ export function tarayiciAraclari(ops) {
       aciklama: 'Beynin bağlı WhatsApp numarasından mesaj, fotoğraf ya da dosya gönderir (tarayıcı gerekmez). numara verilmezse sahibe gider ve onay sorulmaz. dosya verilirse (jpg, png, pdf, mp4, mp3, docx...) metin açıklama olur. Başka numaraya yazarken, ya da sahip dışında birine dosya gönderirken araç önce sahibin onayını ister.',
       sema: nesne({ metin: yazi('Gönderilecek mesaj ya da dosyanın açıklaması'), numara: yazi('Ülke koduyla telefon numarası (ör. +90 5xx xxx xx xx). Boş bırakılırsa sahibe gider.'), dosya: yazi('Gönderilecek dosyanın tam yolu (isteğe bağlı), en çok 64 MB') }, ['metin']),
       calistir: async (g) => ops.whatsappYaz(g.numara ? String(g.numara) : '', String(g.metin), g.dosya ? String(g.dosya) : ''),
+    },
+    whatsapp_gecmis: {
+      aciklama: 'WhatsApp hafızan: sahiple, projelere kayıtlı kişilerle ve senin yazdığın numaralarla olan eski mesajları getirir (uygulama kapalıyken gelenler dahil). numara verilirse o kişiyle konuşma, ara verilirse içinde o kelime geçen mesajlar; ikisi de boşsa konuştuğun kişilerin listesi ve son mesajlar. Biri "geçmişte ne dedi, cevap verdi mi" diye sorarsa önce buna bak. Başka sohbetler kaydedilmez.',
+      sema: nesne({ numara: yazi('Kişinin numarası (ülke koduyla) ya da adı'), ara: yazi('Aranacak kelime'), son: { type: 'number', description: 'En çok kaç mesaj (varsayılan 40, en çok 200)' } }),
+      calistir: async (g) => ops.whatsappGecmis({ numara: g.numara ? String(g.numara) : '', ara: g.ara ? String(g.ara) : '', son: Number(g.son) || 40 }),
     },
     telegram_yaz: {
       aciklama: 'Telegram botundan mesaj, fotoğraf ya da dosya gönderir. kime boşsa sahibe gider. kime bir proje kişisinin adıysa o kişiye gider (kişinin bota bir kez yazmış olması gerekir). Kişiye dosya göndermek sahibin onayına bağlıdır.',

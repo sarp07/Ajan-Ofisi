@@ -1,6 +1,7 @@
 // WhatsApp bağlantısı: tarayıcı ya da ekran okuma olmadan, WhatsApp'ın bağlı cihaz bağlantısıyla çalışır.
 // Beynin numarası bir kez QR ile bağlanır (WhatsApp > Bağlı cihazlar). Gelen mesajlar anında olay olarak gelir,
-// gönderim doğrudan yapılır. Yapay zekâ WhatsApp'ı okumaz: yalnızca sahibin mesajı beyne iletilir, jeton harcanmaz.
+// gönderim doğrudan yapılır. Yapay zekâ WhatsApp'ı genel olarak okumaz: yalnızca sahibin, projelere kayıtlı kişilerin ve
+// beynin yazdığı numaraların mesajları beyne iletilir ve hafızaya (yerel kayıt) yazılır; başka sohbetlere dokunulmaz.
 // Oturum anahtarları uygulamanın veri klasöründe durur. "Çıkış" bağlı cihazı WhatsApp'tan da kaldırır.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,11 @@ const rakamlar = (x) => String(x || '').split('@')[0].split(':')[0].replace(/\D/
 export class WhatsappBaglantisi {
   // klasor: oturum anahtarlarının klasörü. degisti(durum): durum değişince. mesaj({ kimden, numara, metin, ses }): gelen mesaj.
   // medya: gelen fotoğraf ve dosyaların kaydedildiği klasör. kucukResim(yol): önizleme için küçük JPEG (Buffer) ya da null.
-  constructor({ klasor, medya, kucukResim, degisti, mesaj }) {
+  // gecmis(liste): bağlanınca WhatsApp'ın gönderdiği eski mesajlar (yalnızca metin, kaydetmek için)
+  // gonderildi({ id, numara, metin, dosya }): beynin gönderdiği mesaj (hafızaya yazılır)
+  constructor({ klasor, medya, kucukResim, degisti, mesaj, gecmis, gonderildi }) {
+    this.gecmisGeldi = gecmis || (() => {});
+    this.gonderildi = gonderildi || (() => {});
     this.klasor = klasor;
     this.medya = medya;
     this.kucukResim = kucukResim || (() => null);
@@ -55,7 +60,7 @@ export class WhatsappBaglantisi {
     } catch {
       surum = undefined; // kütüphanenin bildiği sürüm kullanılır
     }
-    const soket = makeWASocket({ auth: state, logger: sessiz, browser: Browsers.macOS('Ajan Ofisi'), printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false, ...(surum ? { version: surum } : {}) });
+    const soket = makeWASocket({ auth: state, logger: sessiz, browser: Browsers.macOS('Ajan Ofisi'), printQRInTerminal: false, markOnlineOnConnect: false, syncFullHistory: false, shouldSyncHistoryMessage: () => true, ...(surum ? { version: surum } : {}) });
     this.soket = soket;
     soket.ev.on('creds.update', saveCreds);
     soket.ev.on('connection.update', async (g) => {
@@ -86,49 +91,74 @@ export class WhatsappBaglantisi {
         setTimeout(() => this.baslat().catch((e) => this.ayarla({ baglanti: 'kapali', hata: String(e.message || e) })), bekle);
       }
     });
+    // Mesajın içeriği: metin, sesli mesaj ve ekler. medyaIndir false ise dosyalar indirilmez (geçmiş senkronu)
+    const ayikla = async (m, medyaIndir = true) => {
+      if (!m.message) return null;
+      const sohbet = m.key.remoteJid || '';
+      if (sohbet.endsWith('@g.us') || sohbet === 'status@broadcast' || sohbet.endsWith('@newsletter')) return null;
+      // numara: yeni WhatsApp sürümleri sohbeti gizli kimlikle (@lid) verir, telefon numarası ek alandadır
+      const tel = [m.key.remoteJidAlt, m.key.senderPn, sohbet].find((j) => j && /@s\.whatsapp\.net$/.test(j));
+      const numara = rakamlar(tel || sohbet);
+      const kendi = rakamlar(soket.user && soket.user.id);
+      const ic = m.message.ephemeralMessage ? m.message.ephemeralMessage.message : m.message;
+      if (!ic) return null;
+      let metin = ic.conversation || (ic.extendedTextMessage && ic.extendedTextMessage.text) || (ic.imageMessage && ic.imageMessage.caption) || '';
+      let ses = null;
+      if (ic.audioMessage && medyaIndir) ses = { veri: await downloadMediaMessage(m, 'buffer', {}), mime: ic.audioMessage.mimetype || 'audio/ogg' };
+      else if (ic.audioMessage) metin = metin || '(sesli mesaj)';
+      // fotoğraf, video ve belgeler diske kaydedilir; beyne dosya yolu verilir, beyin dosyayı kendisi açıp bakar
+      const dosyalar = [];
+      const medya = [
+        ['foto', ic.imageMessage],
+        ['video', ic.videoMessage],
+        ['belge', ic.documentMessage || (ic.documentWithCaptionMessage && ic.documentWithCaptionMessage.message && ic.documentWithCaptionMessage.message.documentMessage)],
+      ].find(([, x]) => x);
+      if (medya) {
+        const [tur, x] = medya;
+        if (!metin && x.caption) metin = x.caption;
+        if (!medyaIndir) dosyalar.push({ tur, yol: '', ad: x.fileName || tur, mime: x.mimetype || '' });
+        else if (Number(x.fileLength || 0) <= EN_BUYUK) {
+          const gun = new Date().toISOString().slice(0, 10);
+          const klasor = path.join(this.medya, gun);
+          fs.mkdirSync(klasor, { recursive: true });
+          const ad = tur === 'belge' && x.fileName ? guvenliAd(x.fileName) : `${tur}${uzantiMime(x.mimetype) || (tur === 'foto' ? '.jpg' : tur === 'video' ? '.mp4' : '')}`;
+          const yol = path.join(klasor, `${String(m.key.id).replace(/\W/g, '').slice(0, 24)}-${ad}`);
+          fs.writeFileSync(yol, await downloadMediaMessage(m, 'buffer', {}));
+          dosyalar.push({ tur, yol, ad: x.fileName || ad, mime: x.mimetype || '' });
+        } else dosyalar.push({ tur, yol: '', ad: x.fileName || tur, mime: x.mimetype || '', buyuk: true });
+      }
+      if (!metin && !ses && !dosyalar.length) return null;
+      const zs = Number(m.messageTimestamp && m.messageTimestamp.toNumber ? m.messageTimestamp.toNumber() : m.messageTimestamp) || 0;
+      return { id: m.key.id, z: zs ? zs * 1000 : Date.now(), kimden: m.pushName || '', numara, sohbet, metin, ses, dosyalar, benden: !!m.key.fromMe, kendine: numara === kendi };
+    };
+
+    // notify: canlı mesaj. append: bağlantı kapalıyken gelip sonradan teslim edilenler. İkisi de işlenir;
+    // ana süreç zamanına bakarak kapalıyken gelenleri ayırır.
     soket.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
+      if (type !== 'notify' && type !== 'append') return;
       for (const m of messages) {
         try {
-          if (!m.message || this.gonderilen.has(m.key.id)) continue;
-          const sohbet = m.key.remoteJid || '';
-          if (sohbet.endsWith('@g.us') || sohbet === 'status@broadcast') continue;
-          // numara: yeni WhatsApp sürümleri sohbeti gizli kimlikle (@lid) verir, telefon numarası ek alandadır
-          const tel = [m.key.remoteJidAlt, m.key.senderPn, sohbet].find((j) => j && /@s\.whatsapp\.net$/.test(j));
-          const numara = rakamlar(tel || sohbet);
-          const kendi = rakamlar(soket.user && soket.user.id);
-          // kendi numarandan kendine yazdığın mesajlar da sayılır; başka sohbetlerde senin gönderdiklerin sayılmaz
-          if (m.key.fromMe && numara !== kendi) continue;
-          const ic = m.message.ephemeralMessage ? m.message.ephemeralMessage.message : m.message;
-          let metin = ic.conversation || (ic.extendedTextMessage && ic.extendedTextMessage.text) || (ic.imageMessage && ic.imageMessage.caption) || '';
-          let ses = null;
-          if (ic.audioMessage) ses = { veri: await downloadMediaMessage(m, 'buffer', {}), mime: ic.audioMessage.mimetype || 'audio/ogg' };
-          // fotoğraf, video ve belgeler diske kaydedilir; beyne dosya yolu verilir, beyin dosyayı kendisi açıp bakar
-          const dosyalar = [];
-          const medya = [
-            ['foto', ic.imageMessage],
-            ['video', ic.videoMessage],
-            ['belge', ic.documentMessage || (ic.documentWithCaptionMessage && ic.documentWithCaptionMessage.message && ic.documentWithCaptionMessage.message.documentMessage)],
-          ].find(([, x]) => x);
-          if (medya) {
-            const [tur, x] = medya;
-            if (!metin && x.caption) metin = x.caption;
-            if (Number(x.fileLength || 0) <= EN_BUYUK) {
-              const gun = new Date().toISOString().slice(0, 10);
-              const klasor = path.join(this.medya, gun);
-              fs.mkdirSync(klasor, { recursive: true });
-              const ad = tur === 'belge' && x.fileName ? guvenliAd(x.fileName) : `${tur}${uzantiMime(x.mimetype) || (tur === 'foto' ? '.jpg' : tur === 'video' ? '.mp4' : '')}`;
-              const yol = path.join(klasor, `${String(m.key.id).replace(/\W/g, '').slice(0, 24)}-${ad}`);
-              fs.writeFileSync(yol, await downloadMediaMessage(m, 'buffer', {}));
-              dosyalar.push({ tur, yol, ad: x.fileName || ad, mime: x.mimetype || '' });
-            } else dosyalar.push({ tur, yol: '', ad: x.fileName || tur, mime: x.mimetype || '', buyuk: true });
-          }
-          if (!metin && !ses && !dosyalar.length) continue;
-          this.mesajGeldi({ kimden: m.pushName || '', numara, sohbet, metin, ses, dosyalar });
+          if (this.gonderilen.has(m.key.id)) continue;
+          const x = await ayikla(m);
+          if (!x) continue;
+          this.mesajGeldi({ ...x, canli: type === 'notify' });
         } catch {
           /* tek bir mesaj okunamadıysa diğerleri yine işlenir */
         }
       }
+    });
+    // bağlanınca WhatsApp yakın geçmişi gönderir: yalnızca metni alınır (dosya indirilmez), kayıt için ana sürece verilir
+    soket.ev.on('messaging-history.set', async ({ messages }) => {
+      const liste = [];
+      for (const m of messages || []) {
+        try {
+          const x = await ayikla(m, false);
+          if (x) liste.push(x);
+        } catch {
+          /* okunamayan mesaj atlanır */
+        }
+      }
+      if (liste.length) this.gecmisGeldi(liste);
     });
   }
 
@@ -170,6 +200,12 @@ export class WhatsappBaglantisi {
     if (r && r.key && r.key.id) {
       this.gonderilen.add(r.key.id);
       if (this.gonderilen.size > 500) this.gonderilen.delete(this.gonderilen.values().next().value);
+    }
+    const numara = jid.endsWith('@lid') ? rakamlar(hedef) : rakamlar(jid);
+    try {
+      this.gonderildi({ id: r && r.key && r.key.id, numara, metin: String(metin || ''), dosya: dosya ? path.basename(String(dosya)) : '' });
+    } catch {
+      /* hafızaya yazılamadı, gönderim yine tamam */
     }
     return { tamam: true };
   }
