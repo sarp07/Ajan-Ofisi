@@ -196,9 +196,17 @@ export class SkillDeposu {
   async katalogdanKur(id) {
     const k = katalogOku().find((x) => x.id === id);
     if (!k) throw new Error('Katalogda yok: ' + id);
+    // uygulamayla gelen skill: ağ gerekmeden uygulamanın içinden kurulur
+    if (k.gomulu) return [this.gomuluKur(k)];
     const kurulan = await this.githubdanEkle({ repo: k.repo, yol: k.yol, ref: k.ref, lisans: k.lisans, id: k.id });
     for (const ek of k.birlikte || []) kurulan.push(...(await this.katalogdanKur(ek)));
     return kurulan;
+  }
+
+  gomuluKur(k) {
+    const kaynak = path.resolve(path.dirname(KATALOG_DOSYA), String(k.gomulu));
+    if (!kaynak.startsWith(path.resolve(path.dirname(KATALOG_DOSYA)) + path.sep)) throw new Error('Geçersiz gömülü skill yolu');
+    return this._yerlestir(kaynak, { kaynak: { tur: 'gomulu', repo: k.repo, yol: k.yol, ref: k.ref }, lisans: k.lisans }, k.id);
   }
 
   yeniYaz({ ad, aciklama, govde }) {

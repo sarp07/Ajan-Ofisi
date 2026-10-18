@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { SABLONLAR } from './sablonlar.js';
+import { ilkeMetni } from './ilkeler.js';
 
 export const MCP_ADI = 'ofis';
 
@@ -137,7 +138,7 @@ Browser:
 export function beyinTalimati(sirket) {
   const dil = sirket.dil === 'en' ? 'en' : 'tr';
   const dilAdi = { tr: { tr: 'Türkçe', en: 'İngilizce' }, en: { tr: 'Turkish', en: 'English' } }[dil][dil];
-  return TALIMAT[dil]({ ad: sirket.beyin.ad, sirket: sirket.ad, sahip: sirket.beyin.sahip || '', dilAdi }) + '\n';
+  return TALIMAT[dil]({ ad: sirket.beyin.ad, sirket: sirket.ad, sahip: sirket.beyin.sahip || '', dilAdi }) + '\n\n' + ilkeMetni(dil) + '\n';
 }
 
 // ---------- klasör inceleme ----------

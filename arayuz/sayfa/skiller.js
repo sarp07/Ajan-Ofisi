@@ -33,6 +33,8 @@ export function skillerSayfasi() {
     const t = depo.t;
     if (!k) return '';
     if (k.tur === 'github') return h('a', { href: `https://github.com/${k.repo}`, target: '_blank', rel: 'noreferrer' }, k.repo);
+    // uygulamayla gelen skill: kaynağı yine de gösterilir
+    if (k.tur === 'gomulu') return h('span', null, t('skill.kaynakGomulu'), ' · ', h('a', { href: `https://github.com/${k.repo}`, target: '_blank', rel: 'noreferrer' }, k.repo));
     if (k.tur === 'klasor') return t('skill.kaynakKlasor');
     if (k.tur === 'elle') return t('skill.kaynakElle');
     return '';

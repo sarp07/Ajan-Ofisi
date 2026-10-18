@@ -2,6 +2,7 @@
 // Her tasarım sayfa adlarıyla HTML dosyalarından oluşur (index.html, fiyatlar.html…); görseller assets klasöründe.
 import fs from 'node:fs';
 import path from 'node:path';
+import { ilkeMetni } from './ilkeler.js';
 
 export const TASARIM_KLASORU = 'designs';
 const NO = /^\d{4}$/;
@@ -210,5 +211,7 @@ export function tasarimMetni({ dil = 'tr', sirketAd = '', ad = '', proje = null,
       ].join('\n')
     );
   }
+  // ortak çalışma ilkeleri; tasarım skillerinin kalite çıtası önce gelir
+  b.push(ilkeMetni(dil));
   return b.join('\n\n') + '\n';
 }

@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ccRenk } from './kimlik.js';
+import { ilkeMetni } from './ilkeler.js';
 
 export const EKLENTI_ADI = 'ofis';
 
@@ -201,6 +202,7 @@ export function ajanGovde(sirket, ajan, skillBilgi = {}, proje = null, { motor =
   const bolum = [];
   bolum.push(m.kimlik(ajan.ad, ajan.unvan, sirket.ad) + (ajan.alanlar.length ? ` ${m.alanlar}: ${ajan.alanlar.join(', ')}.` : ''));
   if ((ajan.talimat || '').trim()) bolum.push(ajan.talimat.trim());
+  bolum.push(ilkeMetni(sirket.dil));
   if (ajan.kurallar.length) bolum.push(`## ${m.kurallarin}\n\n${liste(ajan.kurallar)}`);
   if (sirket.kurallar.length) bolum.push(`## ${m.sirketKurallari}\n\n${liste(sirket.kurallar.map((k) => k.metin))}`);
   // atanan skiller öncelikli, şirkette açık olan diğer bütün skiller de her ajana açıktır
@@ -259,6 +261,7 @@ export function ozelMetni(sirket, ajan, { klasor = '', calisma = false } = {}) {
   if ((ajan.talimat || '').trim()) bolum.push(ajan.talimat.trim());
   if (ajan.kurallar.length) bolum.push(`## ${m.kurallarin}\n\n${liste(ajan.kurallar)}`);
   bolum.push(OZEL[dil](ajan.ad, (sirket.beyin && sirket.beyin.sahip) || '', calisma));
+  bolum.push(ilkeMetni(dil));
   bolum.push(
     dil === 'en'
       ? 'Tools: you can use the office browser (tarayicilar, tarayici_ac, tarayici_alanlar, tarayici_yaz, tarayici_tikla, tarayici_goruntu). To change a filled field use tarayici_yaz with temizle true; never ask the owner to clear a field. Before any click or text that posts, sends a message, connects or saves a profile change, ask with sahip_onayi. When you need something from the office (a project screenshot, a live page or app image, work from a floor team, project facts), ask the brain with ofise_ilet; the result arrives in this room as a message starting with "[Brain name]", files in the ekler folder. Only the request you choose to pass on leaves this room.'
@@ -276,6 +279,7 @@ export function sefMetni(sirket, { proje = null, devir = '', motor = 'claude' } 
   bolum.push(`# ${sirket.ad}`);
   bolum.push(m.kimlik(sirket.sef.ad, sirket.sef.unvan, sirket.ad));
   bolum.push((sirket.sef.talimat || '').trim());
+  bolum.push(ilkeMetni(sirket.dil));
   if (sirket.ajanlar.length) {
     const satir = (a) =>
       ek

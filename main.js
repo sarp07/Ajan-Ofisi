@@ -3016,6 +3016,30 @@ async function baglantiDene() {
 // Uygulama kendi skill ordusuyla gelir: katalogdaki önerilen skiller ilk bağlantıda arka planda kurulur.
 // Bir kez kurulan ya da kullanıcının zaten kurmuş olduğu skill "görüldü" sayılır; kullanıcı silerse geri gelmez.
 // Sonraki sürümlerde kataloğa eklenen önerilenler de böylece kendiliğinden gelir.
+// Uygulamayla gelen (gömülü) önerilen skiller ağ beklemeden açılışta kurulur; sahip silerse geri gelmez
+function gomuluSkilleriKur() {
+  try {
+    const kurulu = new Set(skiller.liste().map((s) => s.id));
+    const gorulen = new Set(depo.veri.skillGorulen);
+    const yeni = [];
+    for (const k of katalogOku().filter((x) => x.gomulu && x.varsayilan && !x.gizli && !gorulen.has(x.id))) {
+      try {
+        if (!kurulu.has(k.id)) {
+          skiller.gomuluKur(k);
+          yeni.push(k.id);
+        }
+        gorulen.add(k.id);
+      } catch (e) {
+        gunluk('skill', 'gömülü kurulamadı', k.id, String(e.message || e));
+      }
+    }
+    if (gorulen.size !== depo.veri.skillGorulen.length) depo.guncelle({ skillGorulen: [...gorulen] });
+    if (yeni.length) skillDuyur(yeni);
+  } catch (e) {
+    gunluk('skill', 'gömülü skiller', String(e.message || e));
+  }
+}
+
 let skillKurulumu = null;
 function onerilenSkilleriKur() {
   if (skillKurulumu || SINAMA) return;
@@ -3221,6 +3245,7 @@ if (!app.requestSingleInstanceLock()) {
     kayit = new KayitDefteri(path.join(veri, 'kayit'));
     beyinNotlari = new BeyinNotlari(path.join(veri, 'beyin'));
     setTimeout(hafizaTohumla, 3000);
+    gomuluSkilleriKur();
     anahtarlar = new AnahtarDeposu(path.join(veri, 'anahtarlar.json'), {
       kullanilabilir: () => safeStorage.isEncryptionAvailable(),
       sifrele: (m) => safeStorage.encryptString(m),

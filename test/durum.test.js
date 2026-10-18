@@ -649,5 +649,23 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   }
 }
 
+// Karpathy ilkeleri: her ajan bu ilkelerle başlar, skill kuralları önce gelir; skill uygulamayla gömülü gelir
+{
+  const s = varsayilanSirket('tr');
+  const sef = sefMetni(s);
+  assert.ok(sef.includes('Çalışma ilkeleri (Karpathy)') && sef.includes('skill kurallarını geçersiz kılmaz'), 'şefte ilkeler');
+  assert.ok(sefMetni(varsayilanSirket('en')).includes('Working principles (Karpathy)'));
+  const { beyinTalimati } = await import('../cekirdek/beyin.js');
+  assert.ok(beyinTalimati(s).includes('Çalışma ilkeleri (Karpathy)'), 'beyinde ilkeler');
+  const { tasarimMetni } = await import('../cekirdek/tasarim.js');
+  assert.ok(tasarimMetni({ dil: 'tr', ad: 'T', proje: { ad: 'x', klasor: tmp } }).includes('Çalışma ilkeleri (Karpathy)'), 'tasarımcıda ilkeler');
+  const k = katalogOku().find((x) => x.id === 'karpathy-guidelines');
+  assert.ok(k && k.varsayilan && k.gomulu && k.lisans === 'MIT', 'katalogda varsayılan ve gömülü');
+  const sd = new SkillDeposu(path.join(tmp, 'gomulu-skiller'));
+  assert.equal(sd.gomuluKur(k), 'karpathy-guidelines');
+  const kur = sd.liste().find((x) => x.id === 'karpathy-guidelines');
+  assert.ok(kur && /simplicity/i.test(sd.oku('karpathy-guidelines')), 'gömülü skill ağsız kurulur');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');
