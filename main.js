@@ -13,7 +13,7 @@ import { SirketDeposu, MASA_SAYISI, katGorunumu } from './cekirdek/sirket.js';
 import { SkillDeposu, katalogOku, githubCoz } from './cekirdek/skiller.js';
 import { derle, oturumArgumanlari, codexArgumanlari, ozelMetni } from './cekirdek/derle.js';
 import { kabukOrtami, claudeBul, kurulumKomutu, taslakIste, jsonAyikla, calistir } from './cekirdek/claude.js';
-import { MOTORLAR, codexBul, girisDurumu, girisKomutu, kurulumKomutlari, codexKlasoru, codexModelleri, codexVarsayilan, motorCoz, hazirMi, motorOrtami, codexTaslak, codexAnahtarGirisi } from './cekirdek/motor.js';
+import { MOTORLAR, codexBul, girisDurumu, girisKomutu, kurulumKomutlari, codexKlasoru, codexModelleri, codexVarsayilan, motorCoz, hazirMi, motorOrtami, codexTaslak, codexAnahtarGirisi, motorCikis } from './cekirdek/motor.js';
 import { AnahtarDeposu } from './cekirdek/anahtarlar.js';
 import { mcpIsle } from './cekirdek/mcp.js';
 import { Guncelleyici } from './cekirdek/guncelleme.js';
@@ -2340,6 +2340,19 @@ function ipcKur() {
     return { claude, motorlar: motorBilgi() };
   });
   h('motor:giris', (secenek) => girisBaslat(secenek || {}));
+  // Abonelik hesabından çıkış (Claude, ChatGPT/Codex, Kimi, Gemini). O motorla açık oturum varken çıkılmaz.
+  h('motor:cikis', async (motor) => {
+    if (!MOTORLAR.includes(motor)) return { hata: 'genel' };
+    const acik = [...katlar.values()].some((k) => k.oturum.acik && k.oturum.bilgi && k.oturum.bilgi.motor === motor);
+    if (acik) return { hata: 'cikisAcikOturum' };
+    const arac = aracAl(motor);
+    const env = motorOrtami(motor, { giris: { [motor]: 'abonelik' } }, ortam, '');
+    const r = await motorCikis(motor, arac && arac.yol, env);
+    gunluk('motor', 'çıkış', motor, r.tamam ? 'tamam' : r.ayrinti || r.hata);
+    await motorlarYenile();
+    gonder('bilgi', baslangic().bilgi);
+    return { ...r, motorlar: motorBilgi() };
+  });
   h('github:repolar', async () => {
     try {
       return { tamam: true, liste: await repoListesi({ gh: github.durum.girisli ? github.yol : null, env: ortam }) };

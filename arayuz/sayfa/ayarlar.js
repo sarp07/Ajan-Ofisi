@@ -282,7 +282,26 @@ export function ayarlarSayfasi({ git } = {}) {
               },
             },
             t(g.girisli ? 'motor.hesapDegistir' : 'motor.girisYap')
-          )
+          ),
+          // hesaptan çıkış: bu bilgisayardaki aracın girişi kapanır (terminalde de)
+          g.girisli
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  class: 'dugme',
+                  onclick: async (e) => {
+                    if (!confirm(t('motor.cikisOnay', { x: t('motor.arac.' + motor) }))) return;
+                    e.currentTarget.disabled = true;
+                    const r = await api.motorCikis(motor);
+                    if (!r || r.hata) return bildir(hataMetni(r), true);
+                    bildir(t('motor.cikisYapildi', { x: t('motor.arac.' + motor) }));
+                  },
+                },
+                ikon('disari', 14),
+                t('motor.cikis')
+              )
+            : null
         ),
         motor === 'kimi' || motor === 'gemini' ? h('p', { class: 'alanIpucu' }, t('motor.girisNot.' + motor)) : null
       );

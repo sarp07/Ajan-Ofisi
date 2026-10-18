@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { yolAra, calistir } from './claude.js';
-import { EK_MOTORLAR, EK_KURULUM, ekGirisDurumu, ekGirisKomutu, ekAnahtarOrtami, EK_ANAHTAR_DEGISKENI } from './ek-motorlar.js';
+import { EK_MOTORLAR, EK_KURULUM, ekGirisDurumu, ekGirisKomutu, ekAnahtarOrtami, EK_ANAHTAR_DEGISKENI, ekCikis } from './ek-motorlar.js';
 
 export const MOTORLAR = ['claude', 'codex', ...EK_MOTORLAR];
 export const MOTOR_SECIMLERI = ['otomatik', ...MOTORLAR];
@@ -83,6 +83,18 @@ export async function girisDurumu(motor, yol, env) {
 export function girisKomutu(motor) {
   if (EK_MOTORLAR.includes(motor)) return ekGirisKomutu(motor);
   return motor === 'claude' ? ['auth', 'login'] : ['login'];
+}
+
+// Abonelik girişinden çıkış: Claude ve Codex kendi çıkış komutuyla, Kimi ve Gemini giriş dosyaları silinerek
+export async function motorCikis(motor, yol, env) {
+  if (EK_MOTORLAR.includes(motor)) {
+    ekCikis(motor, env);
+    return { tamam: true };
+  }
+  if (!yol) return { hata: 'motorYok' };
+  const s = await calistir(yol, motor === 'claude' ? ['auth', 'logout'] : ['logout'], { env, zamanAsimi: 30000 });
+  if (s.kod !== 0) return { hata: 'genel', ayrinti: (s.hata || s.cikti).trim().split('\n').pop() || 'çıkış yapılamadı' };
+  return { tamam: true };
 }
 
 // ---------- Codex modelleri ----------

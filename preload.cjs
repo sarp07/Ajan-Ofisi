@@ -74,6 +74,7 @@ contextBridge.exposeInMainWorld('ofis', {
   claudeYenile: cagri('claude:yenile'),
   claudeYolSec: cagri('claude:yolSec'),
   motorGiris: cagri('motor:giris'),
+  motorCikis: cagri('motor:cikis'),
   githubRepo: cagri('github:repo'),
   githubRepolar: cagri('github:repolar'),
   katKoku: cagri('kat:koku'),

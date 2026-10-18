@@ -85,6 +85,36 @@ export function ekGirisDurumu(motor) {
   return { girisli: false };
 }
 
+// Abonelik girişinden çıkış: Kimi ve Gemini'nin çıkış komutu yok, giriş bilgisi dosyaları silinir.
+// Ayarlar ve geçmiş kalır; yalnızca giriş bilgisi gider. Döner: silinen dosya sayısı
+export function ekCikis(motor, env = process.env) {
+  let say = 0;
+  const sil = (yol) => {
+    try {
+      if (fs.lstatSync(yol)) {
+        fs.rmSync(yol, { force: true });
+        say++;
+      }
+    } catch {
+      /* yok */
+    }
+  };
+  if (motor === 'kimi') {
+    const k = path.join(kimiKlasoru(env), 'credentials');
+    let girdiler = [];
+    try {
+      girdiler = fs.readdirSync(k);
+    } catch {
+      girdiler = [];
+    }
+    for (const ad of girdiler) sil(path.join(k, ad));
+  } else if (motor === 'gemini') {
+    const g = geminiKlasoru(env);
+    for (const ad of ['oauth_creds.json', 'google_accounts.json']) sil(path.join(g, ad));
+  }
+  return say;
+}
+
 // API anahtarıyla çalışırken oturuma verilen ortam
 export function ekAnahtarOrtami(motor, anahtar) {
   if (motor === 'kimi') return { KIMI_MODEL_NAME: 'kimi-k2.6', KIMI_MODEL_API_KEY: anahtar, KIMI_MODEL_BASE_URL: process.env.AJAN_OFIS_KIMI_TABAN || 'https://api.moonshot.ai/v1', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_CAPABILITIES: 'image_in,thinking' };

@@ -667,5 +667,31 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.ok(kur && /simplicity/i.test(sd.oku('karpathy-guidelines')), 'gömülü skill ağsız kurulur');
 }
 
+// Hesaptan çıkış: Claude/Codex kendi komutuyla, Kimi/Gemini giriş dosyaları silinerek (ayarlar kalır)
+{
+  const { motorCikis } = await import('../cekirdek/motor.js');
+  const kimiEv = path.join(tmp, 'cikis-kimi');
+  fs.mkdirSync(path.join(kimiEv, 'credentials'), { recursive: true });
+  fs.writeFileSync(path.join(kimiEv, 'credentials', 'kimi-code.json'), '{}');
+  fs.writeFileSync(path.join(kimiEv, 'config.toml'), 'x = 1');
+  assert.ok((await motorCikis('kimi', '', { KIMI_CODE_HOME: kimiEv })).tamam);
+  assert.deepEqual(fs.readdirSync(path.join(kimiEv, 'credentials')), [], 'kimi giriş bilgisi silindi');
+  assert.ok(fs.existsSync(path.join(kimiEv, 'config.toml')), 'kimi ayarı kalır');
+  const gEv = path.join(tmp, 'cikis-gemini');
+  fs.mkdirSync(path.join(gEv, '.gemini'), { recursive: true });
+  for (const f of ['oauth_creds.json', 'google_accounts.json', 'settings.json']) fs.writeFileSync(path.join(gEv, '.gemini', f), '{}');
+  await motorCikis('gemini', '', { GEMINI_CLI_HOME: gEv });
+  assert.deepEqual(fs.readdirSync(path.join(gEv, '.gemini')), ['settings.json'], 'gemini yalnızca giriş dosyaları silindi');
+  if (process.platform !== 'win32') {
+    const sahte = path.join(tmp, 'sahte-arac');
+    const kayitD = path.join(tmp, 'sahte-arac.log');
+    fs.writeFileSync(sahte, `#!/bin/sh\necho "$@" > ${JSON.stringify(kayitD)}\n`, { mode: 0o755 });
+    assert.ok((await motorCikis('claude', sahte, process.env)).tamam);
+    assert.equal(fs.readFileSync(kayitD, 'utf8').trim(), 'auth logout');
+    await motorCikis('codex', sahte, process.env);
+    assert.equal(fs.readFileSync(kayitD, 'utf8').trim(), 'logout');
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');
