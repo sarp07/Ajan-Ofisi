@@ -12,7 +12,12 @@ export function tarayiciSayfasi() {
   const bos = h('div', { class: 'tarayiciBos' });
   // konsol paneli: tarayıcının altında, onunla üst üste binmez
   const konsolPanel = h('section', { class: 'konsolPanel', hidden: true });
-  kok.append(liste, h('section', { class: 'tarayiciSag' }, arac, h('div', { class: 'tarayiciGovde' }, yer, bos), konsolPanel));
+  // indirilenler: tarayıcının üstünde açılan şerit (tarayıcı yerel çizildiği için açılır menü onun altında kalırdı)
+  const indirmePanel = h('section', { class: 'indirmePanel', hidden: true });
+  kok.append(liste, h('section', { class: 'tarayiciSag' }, arac, indirmePanel, h('div', { class: 'tarayiciGovde' }, yer, bos), konsolPanel));
+  let indirmeler = [];
+  let indirmeAcik = false;
+  let yeniIndirme = 0;
   let konsolAcik = false;
   let konsolSuzgec = '';
 
@@ -157,6 +162,23 @@ export function tarayiciSayfasi() {
             d.hata ? h('span', { class: 'konsolSayi hata' }, String(d.hata)) : d.uyari ? h('span', { class: 'konsolSayi uyari' }, String(d.uyari)) : null
           )
         : null,
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'dugme indirmeDugme' + (indirmeAcik ? ' secili' : ''),
+          'aria-pressed': indirmeAcik ? 'true' : 'false',
+          title: t('tarayici.indirilenler'),
+          onclick: () => {
+            indirmeAcik = !indirmeAcik;
+            yeniIndirme = 0;
+            ciz();
+          },
+        },
+        ikon('indir', 14),
+        t('tarayici.indirilenler'),
+        indirmeler.some((x) => x.durum === 'iniyor') ? h('span', { class: 'donen kucuk' }) : yeniIndirme ? h('span', { class: 'konsolSayi yeni' }, String(yeniIndirme)) : null
+      ),
       d.acik ? h('button', { type: 'button', class: 'dugme', onclick: () => api.tarayiciKapat(secili) }, t('tarayici.kapat')) : null,
       x.test
         ? null
@@ -194,6 +216,57 @@ export function tarayiciSayfasi() {
       );
     }
   }
+
+  const boyutYaz = (b) => (!b ? '' : b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : b < 1073741824 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1073741824).toFixed(2) + ' GB');
+  function indirmeCiz() {
+    const t = depo.t;
+    const onceki = indirmePanel.hidden;
+    indirmePanel.hidden = !indirmeAcik;
+    if (onceki !== indirmePanel.hidden) requestAnimationFrame(yerlestir);
+    if (!indirmeAcik) return;
+    doldur(
+      indirmePanel,
+      h('div', { class: 'indirmeBas' }, h('b', null, t('tarayici.indirilenler')), h('span', null, t('tarayici.indirmeKlasor')), h('button', { type: 'button', class: 'simge', title: t('genel.kapat'), 'aria-label': t('genel.kapat'), onclick: () => ((indirmeAcik = false), ciz()) }, ikon('kapat', 14))),
+      indirmeler.length
+        ? h(
+            'ul',
+            { class: 'indirmeListe' },
+            indirmeler.slice(0, 12).map((x) => {
+              const oran = x.boyut > 0 ? Math.min(100, Math.round((x.alinan / x.boyut) * 100)) : 0;
+              return h(
+                'li',
+                { class: 'indirme durum-' + x.durum },
+                ikon(x.durum === 'tamam' ? 'dosya' : x.durum === 'iniyor' ? 'indir' : 'ucgen', 15),
+                h(
+                  'div',
+                  { class: 'indirmeBilgi' },
+                  h('span', { class: 'indirmeAd', title: x.yol }, x.ad),
+                  x.durum === 'iniyor' ? h('div', { class: 'indirmeCubuk' }, h('i', { style: `width:${x.boyut > 0 ? oran : 35}%` })) : null,
+                  h('small', null, x.durum === 'iniyor' ? `${boyutYaz(x.alinan)}${x.boyut ? ' / ' + boyutYaz(x.boyut) : ''}` : t('tarayici.indirme.' + x.durum) + (x.durum === 'tamam' ? ' · ' + boyutYaz(x.alinan || x.boyut) : ''))
+                ),
+                x.durum === 'tamam' ? h('button', { type: 'button', class: 'dugme kucuk', onclick: () => api.tarayiciIndirmeAc(x.id) }, t('tarayici.indirmeAc')) : null,
+                h('button', { type: 'button', class: 'simge', title: t('tarayici.indirmeGoster'), 'aria-label': t('tarayici.indirmeGoster'), disabled: x.durum === 'iptal', onclick: () => api.tarayiciIndirmeGoster(x.id) }, ikon('klasor', 14))
+              );
+            })
+          )
+        : h('p', { class: 'indirmeBos' }, t('tarayici.indirmeYok'))
+    );
+  }
+
+  // indirme ilerlemesi: liste güncellenir, biten indirme her sayfada bildirilir
+  api.tarayiciIndirmeDinle((d) => {
+    if (!d) return;
+    const i = indirmeler.findIndex((x) => x.id === d.id);
+    if (i >= 0) indirmeler[i] = d;
+    else indirmeler.unshift(d);
+    if (d.durum === 'tamam') {
+      bildir(depo.t('tarayici.indirildi', { x: d.ad }));
+      if (!indirmeAcik) yeniIndirme++;
+    } else if (d.durum === 'hata') bildir(depo.t('tarayici.indirmeHata', { x: d.ad }), true);
+    if (!gorunur) return;
+    if (i < 0 || d.durum !== 'iniyor') aracCiz();
+    indirmeCiz();
+  });
 
   // Konsol: sayfanın hata ve uyarıları, en yenisi altta
   async function konsolCiz() {
@@ -264,6 +337,7 @@ export function tarayiciSayfasi() {
     aracCiz();
     bosCiz();
     konsolCiz();
+    indirmeCiz();
     requestAnimationFrame(yerlestir);
   }
 
@@ -288,6 +362,10 @@ export function tarayiciSayfasi() {
     goster() {
       gorunur = true;
       yenile();
+      api.tarayiciIndirmeler().then((l) => {
+        indirmeler = Array.isArray(l) ? l : [];
+        if (gorunur) indirmeCiz();
+      });
     },
     gizle() {
       gorunur = false;

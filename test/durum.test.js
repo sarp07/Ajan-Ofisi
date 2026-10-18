@@ -632,5 +632,22 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.ok(tasarimMetni({ dil: 'en', ad: 'Designer', proje: { ad: 'Site', klasor: pk } }).includes('[Design 0001 · page: index.html]'));
 }
 
+// Tarayıcı: indirilen dosyaya boş ad, ajanın yükleyebileceği dosyalar
+{
+  const { bosAd, yuklenebilirMi } = await import('../cekirdek/dosya-yolu.js');
+  {
+    const k = path.join(tmp, 'indir');
+    fs.mkdirSync(k, { recursive: true });
+    assert.equal(bosAd(k, 'rapor.pdf'), path.join(k, 'rapor.pdf'));
+    fs.writeFileSync(path.join(k, 'rapor.pdf'), 'x');
+    assert.equal(bosAd(k, 'rapor.pdf'), path.join(k, 'rapor (1).pdf'));
+    assert.equal(path.basename(bosAd(k, 'a/b:c.txt')), 'a_b_c.txt');
+    assert.ok(yuklenebilirMi(path.join(k, 'rapor.pdf')));
+    assert.ok(!yuklenebilirMi('rapor.pdf'), 'göreli yol olmaz');
+    assert.ok(!yuklenebilirMi(path.join(tmp, '.gizli', 'x')), 'gizli klasör olmaz');
+    assert.ok(!yuklenebilirMi(k), 'klasör olmaz');
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

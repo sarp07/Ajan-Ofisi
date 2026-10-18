@@ -1,7 +1,10 @@
 // Tarayıcı odası: her bağlı hesap uygulamanın içinde kendi kalıcı Chromium profilinde açılır.
 // Girişi sahip elle yapar, uygulama şifre görmez. Oturum çerezi o hesabın profilinde (persist:hesap-<kimlik>) durur.
 // Ajanlar bu sekmeleri MCP araçlarıyla okur ve kullanır. Bu dosya yalnızca ana süreçte çalışır.
-import { WebContentsView, BrowserWindow, session } from 'electron';
+import { WebContentsView, BrowserWindow, session, app, dialog } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import { bosAd, yuklenebilirMi } from './dosya-yolu.js';
 
 export const BASLANGIC = {
   telegram: 'https://web.telegram.org/',
@@ -42,6 +45,9 @@ export const CIHAZLAR = {
   android: { genislik: 412, yukseklik: 915, olcek: 2.625, kimlik: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' },
 };
 const KONSOL_SINIR = 300;
+const INDIRME_SINIR = 60;
+
+
 
 export const hesapAdresi = (h) => guvenliAdres(h.adres) || BASLANGIC[h.platform] || 'https://www.google.com/';
 
@@ -52,10 +58,13 @@ function chromeKimligi(ua) {
 
 export class TarayiciOdasi {
   // pencere: ana BrowserWindow. degisti(id, bilgi): sekme durumu değişince
-  constructor({ pencere, degisti, konsolDegisti }) {
+  constructor({ pencere, degisti, konsolDegisti, indirmeDegisti }) {
     this.pencere = pencere;
     this.degisti = degisti;
     this.konsolDegisti = konsolDegisti;
+    this.indirmeDegisti = indirmeDegisti;
+    this.indirilenler = [];
+    this.oturumlar = new WeakSet();
     this.sekmeler = new Map(); // hesap kimliği -> { view, hesap }
     this.gorunen = null;
   }
@@ -107,7 +116,9 @@ export class TarayiciOdasi {
     const ses = session.fromPartition(bolme);
     ses.setUserAgent(chromeKimligi(ses.getUserAgent()));
     // izinler: kamera, mikrofon, konum gibi istekler reddedilir. Bildirim ve panoya yazma serbest.
-    ses.setPermissionRequestHandler((_wc, izin, karar) => karar(['notifications', 'clipboard-sanitized-write', 'fullscreen'].includes(izin)));
+    // fileSystem: sitelerin dosya seçme penceresi (showOpenFilePicker) çalışsın
+    ses.setPermissionRequestHandler((_wc, izin, karar) => karar(['notifications', 'clipboard-sanitized-write', 'fullscreen', 'fileSystem'].includes(izin)));
+    this.indirmeKur(ses);
     const view = new WebContentsView({ webPreferences: { partition: bolme, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     view.setBackgroundColor('#ffffff');
     const wc = view.webContents;
@@ -149,8 +160,146 @@ export class TarayiciOdasi {
     wc.on('render-process-gone', (_e, d) => konsolaEkle({ seviye: 'error', mesaj: 'Sayfa çöktü: ' + (d && d.reason), kaynak: wc.getURL(), satir: 0 }));
     this.sekmeler.set(hesap.id, s);
     this.eveKoy(s);
+    this.yuklemeKur(s);
     wc.loadURL(hesapAdresi(hesap));
     return s;
+  }
+
+  // ---------- indirme ----------
+  // Her hesabın oturumu bir kez bağlanır. Dosya sormadan İndirilenler klasörüne iner, ilerleme arayüze bildirilir.
+  indirmeKur(ses) {
+    if (this.oturumlar.has(ses)) return;
+    this.oturumlar.add(ses);
+    ses.on('will-download', (_e, oge, wc) => {
+      const hesapId = [...this.sekmeler.entries()].find(([, x]) => x.view.webContents === wc)?.[0] || '';
+      let klasor = '';
+      try {
+        klasor = app.getPath('downloads');
+        fs.mkdirSync(klasor, { recursive: true });
+      } catch {
+        klasor = app.getPath('temp');
+      }
+      const yol = bosAd(klasor, oge.getFilename());
+      oge.setSavePath(yol);
+      const kayit = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), hesapId, ad: path.basename(yol), yol, adres: oge.getURL(), boyut: oge.getTotalBytes(), alinan: 0, durum: 'iniyor', z: Date.now() };
+      this.indirilenler.unshift(kayit);
+      if (this.indirilenler.length > INDIRME_SINIR) this.indirilenler.length = INDIRME_SINIR;
+      let son = 0;
+      const haber = (zorla) => {
+        if (!zorla && Date.now() - son < 400) return;
+        son = Date.now();
+        this.indirmeDegisti && this.indirmeDegisti({ ...kayit });
+      };
+      haber(true);
+      oge.on('updated', (_x, durum) => {
+        kayit.alinan = oge.getReceivedBytes();
+        kayit.boyut = oge.getTotalBytes();
+        if (durum === 'interrupted') kayit.durum = 'durdu';
+        else if (kayit.durum === 'durdu') kayit.durum = 'iniyor';
+        haber(false);
+      });
+      oge.once('done', (_x, durum) => {
+        kayit.alinan = oge.getReceivedBytes();
+        kayit.durum = durum === 'completed' ? 'tamam' : durum === 'cancelled' ? 'iptal' : 'hata';
+        haber(true);
+      });
+    });
+  }
+
+  indirmeler(hesapId = '') {
+    return this.indirilenler.filter((x) => !hesapId || x.hesapId === hesapId).map((x) => ({ ...x }));
+  }
+
+  // ---------- yükleme ----------
+  // Sitenin dosya seçme penceresi yakalanır: sahip tıkladıysa uygulamanın kendi penceresi açılır (gizli sekmede de
+  // görünür), ajan tarayici_dosya_yukle ile dosya verdiyse pencere açılmadan o dosyalar seçilir.
+  yuklemeKur(s) {
+    const wc = s.view.webContents;
+    const dbg = wc.debugger;
+    s.bekleyenDosyalar = null;
+    const etkinlestir = async () => {
+      try {
+        if (!dbg.isAttached()) dbg.attach('1.3');
+        await dbg.sendCommand('Page.enable');
+        await dbg.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+        s.yakalama = true;
+      } catch {
+        // hata ayıklayıcı bağlanamazsa Electron'un kendi seçme penceresi kullanılır
+        s.yakalama = false;
+      }
+    };
+    dbg.on('message', async (_e, yontem, p) => {
+      if (yontem !== 'Page.fileChooserOpened') return;
+      let dosyalar = [];
+      if (s.bekleyenDosyalar) {
+        dosyalar = s.bekleyenDosyalar.dosyalar;
+        s.bekleyenDosyalar.coz(true);
+        s.bekleyenDosyalar = null;
+      } else {
+        const coklu = p.mode === 'selectMultiple';
+        const sahip = this.pencere && !this.pencere.isDestroyed() ? this.pencere : undefined;
+        try {
+          const secim = await dialog.showOpenDialog(sahip, { properties: coklu ? ['openFile', 'multiSelections'] : ['openFile'] });
+          dosyalar = secim.canceled ? [] : secim.filePaths;
+        } catch {
+          dosyalar = [];
+        }
+      }
+      try {
+        await dbg.sendCommand('DOM.setFileInputFiles', { files: dosyalar, backendNodeId: p.backendNodeId });
+      } catch {
+        /* sayfa değişti */
+      }
+    });
+    dbg.on('detach', () => (s.yakalama = false));
+    etkinlestir();
+    // süreç değişen gezinmelerden sonra yakalama yeniden açılır
+    wc.on('did-navigate', () => etkinlestir());
+  }
+
+  // Ajanın dosya yüklemesi: hedef bir dosya alanıysa doğrudan, düğmeyse tıklanır ve açılan seçme penceresine dosyalar verilir.
+  // hedef verilmezse sayfadaki ilk dosya alanı kullanılır.
+  async dosyaYukle(id, dosyalar, hedef = {}) {
+    const s = this.sekmeler.get(id);
+    if (!s) throw new Error('Tarayıcı açık değil');
+    const liste = (Array.isArray(dosyalar) ? dosyalar : [dosyalar]).map((x) => path.resolve(String(x)));
+    if (!liste.length) throw new Error('Yüklenecek dosya verilmedi');
+    const yasak = liste.filter((x) => !yuklenebilirMi(x));
+    if (yasak.length) throw new Error('Bu dosyalar yüklenemez (yok, klasör, çok büyük ya da gizli/sistem klasöründe): ' + yasak.join(', '));
+    const wc = s.view.webContents;
+    const dbg = wc.debugger;
+    const dosyaAlani = async (secici) => {
+      if (!dbg.isAttached()) return false;
+      const { root } = await dbg.sendCommand('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await dbg.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector: secici });
+      if (!nodeId) return false;
+      const { node } = await dbg.sendCommand('DOM.describeNode', { nodeId });
+      const tip = (node.attributes || []).reduce((a, x, i, d) => (i % 2 === 0 && x === 'type' ? d[i + 1] : a), '');
+      if (node.nodeName !== 'INPUT' || String(tip).toLowerCase() !== 'file') return false;
+      await dbg.sendCommand('DOM.setFileInputFiles', { files: liste, nodeId });
+      return true;
+    };
+    const verildi = () => ({ tamam: true, dosyalar: liste.map((x) => path.basename(x)), not: 'Dosyalar seçildi. Sitenin yüklemeyi bitirmesini bekleyip tarayici_goruntu ile kontrol et; gerekiyorsa gönder/yükle düğmesine bas.' });
+    const hedefVar = hedef.no || hedef.secici || hedef.etiket;
+    if (!hedefVar) {
+      if (await dosyaAlani('input[type=file]').catch(() => false)) return verildi();
+      throw new Error('Sayfada dosya alanı bulunamadı. Yükle düğmesini no, etiket ya da secici ile ver.');
+    }
+    const b = await this.bul(id, hedef, 'tikla');
+    if (!b) throw new Error('Hedef öğe bulunamadı. tarayici_alanlar ile listeleyip numarasıyla dene.');
+    if (b.fi === 0 && (await dosyaAlani(`[data-ofis-no="${b.bilgi.no}"]`).catch(() => false))) return verildi();
+    if (!s.yakalama) throw new Error('Bu sekmede dosya seçme penceresi yakalanamıyor; sahipten dosyayı elle yüklemesini iste.');
+    // düğme: tıklanır, açılan seçme penceresine dosyalar verilir
+    const bekle = new Promise((coz) => {
+      s.bekleyenDosyalar = { dosyalar: liste, coz };
+      setTimeout(() => {
+        if (s.bekleyenDosyalar && s.bekleyenDosyalar.coz === coz) s.bekleyenDosyalar = null;
+        coz(false);
+      }, 5000);
+    });
+    await this.tikla(id, { no: b.bilgi.no });
+    if (await bekle) return verildi();
+    throw new Error('Tıklandı ama dosya seçme penceresi açılmadı. Doğru yükle düğmesini seçtiğinden emin ol.');
   }
 
   // Sekmeyi pencerenin içindeki bir dikdörtgende gösterir (arayüzdeki yer tutucunun yeri)

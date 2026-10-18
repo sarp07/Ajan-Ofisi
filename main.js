@@ -51,6 +51,8 @@ const SINAMA = !!process.env.AJAN_OFIS_EKRAN;
 
 // Sınamalarda veri klasörü ayrı tutulur
 if (process.env.AJAN_OFIS_VERI) app.setPath('userData', process.env.AJAN_OFIS_VERI);
+// sınamalarda indirmeler ayrı klasöre gider
+if (process.env.AJAN_OFIS_INDIRME) app.setPath('downloads', process.env.AJAN_OFIS_INDIRME);
 
 let pencere = null;
 let depo = null;
@@ -1820,6 +1822,14 @@ function tarayiciIslemleri(kapsam) {
       return 'Sekme kapatıldı.';
     },
     fare: (id, g) => (hesap(id), oda.fare(id, g)),
+    dosyaYukle: (id, dosyalar, hedef) => (hesap(id), oda.dosyaYukle(id, dosyalar, hedef)),
+    // indirmeler: yalnızca bu kapsamın erişebildiği sekmelerinkiler
+    indirmeler: (id) => {
+      const izinli = new Set(kapsamHesaplari(kapsam).map((x) => x.id));
+      if (id && !izinli.has(id)) throw new Error('Bu hesaba erişimin yok: ' + id);
+      const liste = oda.indirmeler(id).filter((x) => izinli.has(x.hesapId));
+      return liste.length ? liste.map((x) => ({ ad: x.ad, yol: x.yol, boyut: x.boyut, alinan: x.alinan, durum: x.durum, hesap_id: x.hesapId, zaman: new Date(x.z).toISOString() })) : 'Henüz indirilen dosya yok.';
+    },
     yeni: async (adres, ad) => {
       const katId = kapsam === 'beyin' ? (depo.veri.projeler.find((p) => p.tur === 'kisisel') || depo.veri.projeler[0] || {}).id : (ozelCoz(kapsam) || { katId: kapsam }).katId;
       if (!katId || !depo.proje(katId)) throw new Error('Sekmenin açılacağı kat bulunamadı.');
@@ -2739,6 +2749,19 @@ function ipcKur() {
   h('tarayici:cihaz', (id, cihaz) => oda.cihazSec(String(id), String(cihaz)));
   h('tarayici:konsol', (id) => oda.konsol(String(id)));
   h('tarayici:konsolTemizle', (id) => oda.konsolTemizle(String(id)));
+  // indirilenler: liste, aç, klasörde göster (yalnızca tarayıcının indirdiği dosyalar)
+  const indirme = (id) => (oda ? oda.indirmeler().find((x) => x.id === String(id)) : null);
+  h('tarayici:indirmeler', () => (oda ? oda.indirmeler() : []));
+  h('tarayici:indirmeAc', (id) => {
+    const x = indirme(id);
+    if (x && x.durum === 'tamam' && fs.existsSync(x.yol)) shell.openPath(x.yol);
+    return { tamam: !!x };
+  });
+  h('tarayici:indirmeGoster', (id) => {
+    const x = indirme(id);
+    if (x) shell.showItemInFolder(fs.existsSync(x.yol) ? x.yol : path.dirname(x.yol));
+    return { tamam: !!x };
+  });
   h('tarayici:hesapEkle', ({ katId, platform, ad, adres }) => {
     const p = depo.proje(String(katId || ''));
     if (!p) return { hata: 'projeYok' };
@@ -3258,7 +3281,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     if (whatsapp.kayitliMi()) whatsapp.baslat().catch(() => {});
     botlariKur();
-    oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }) });
+    oda = new TarayiciOdasi({ pencere, degisti: (_id, b) => gonder('tarayici', b), konsolDegisti: (id) => gonder('tarayici:konsol', { id }), indirmeDegisti: (d) => gonder('tarayici:indirme', d) });
     // yalnızca sınama ortamında: otomatik testler ajan araçlarını doğrudan çağırabilsin
     if (SINAMA)
       globalThis.__ofisSinama = {

@@ -4,8 +4,8 @@ const nesne = (ozellik, gerekli = []) => ({ type: 'object', properties: ozellik,
 const yazi = (aciklama) => ({ type: 'string', description: aciklama });
 
 // Sahibe sormadan çalışabilen araçlar. Geri kalanlar (tarayici_tikla, tarayici_yaz) her seferinde onay ister.
-export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_yeni', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
-export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus', 'tarayici_fare'];
+export const ONAYSIZ_ARACLAR = ['tarayicilar', 'tarayici_ac', 'tarayici_yeni', 'tarayici_git', 'tarayici_metin', 'tarayici_goruntu', 'tarayici_konsol', 'tarayici_cihaz', 'tarayici_alanlar', 'tarayici_kaydir', 'tarayici_kapat', 'tarayici_indirilenler', 'sahip_onayi', 'whatsapp_yaz', 'telegram_yaz'];
+export const ONAYLI_ARACLAR = ['tarayici_tikla', 'tarayici_yaz', 'tarayici_tus', 'tarayici_fare', 'tarayici_dosya_yukle'];
 
 const KURAL =
   'Paylaşım yapan, mesaj gönderen, silen, satın alan ya da hesap ayarını değiştiren bir tıklama veya yazmadan ÖNCE sahip_onayi ile sahibe ne yapacağını sor. Giriş ekranı çıkarsa dur: şifreyi asla isteme ve yazma, sahibe Tarayıcı sayfasından kendisinin giriş yapmasını söyle.';
@@ -33,6 +33,16 @@ export function tarayiciAraclari(ops) {
       aciklama: 'Gerçek fare kullanır: ekran görüntüsündeki (tarayici_goruntu) x,y noktasına tıklar, çift tıklar, sağ tıklar, üzerine gelir ya da x2,y2 noktasına sürükler. Öğe numarasıyla bulunamayan yerler için (tuval, harita, sürükle bırak, menü) kullan. ' + KURAL,
       sema: nesne({ hesap_id: hesapId, x: { type: 'number' }, y: { type: 'number' }, eylem: { type: 'string', enum: ['tikla', 'cift', 'sag', 'uzerine', 'surukle'] }, x2: { type: 'number' }, y2: { type: 'number' } }, ['hesap_id', 'x', 'y']),
       calistir: async (g) => ops.fare(String(g.hesap_id), { x: g.x, y: g.y, eylem: g.eylem || 'tikla', x2: g.x2, y2: g.y2 }),
+    },
+    tarayici_dosya_yukle: {
+      aciklama: 'Sayfaya bilgisayardan dosya yükler (görsel, belge, video). Hedef bir dosya alanıysa doğrudan seçer; "Yükle", "Fotoğraf ekle" gibi bir düğmeyse tıklar ve açılan seçme penceresine dosyaları verir. Hedef verilmezse sayfadaki ilk dosya alanı kullanılır. Dosya yolları tam yol olmalı (proje klasörü, tasarım assets klasörü, indirilenler, sohbete eklenen dosyalar). Sonra tarayici_goruntu ile yüklemenin bittiğini kontrol et. ' + KURAL,
+      sema: nesne({ hesap_id: hesapId, dosyalar: { type: 'array', items: { type: 'string' }, description: 'Yüklenecek dosyaların tam yolları' }, no: yazi('Dosya alanının ya da yükle düğmesinin tarayici_alanlar numarası'), etiket: yazi('Düğmenin ya da alanın görünen adı'), secici: yazi('CSS seçici') }, ['hesap_id', 'dosyalar']),
+      calistir: async (g) => ops.dosyaYukle(String(g.hesap_id), Array.isArray(g.dosyalar) ? g.dosyalar.map(String) : [String(g.dosyalar || '')], { no: g.no ? String(g.no) : '', etiket: g.etiket ? String(g.etiket) : '', secici: g.secici ? String(g.secici) : '' }),
+    },
+    tarayici_indirilenler: {
+      aciklama: 'Tarayıcıdan indirilen dosyaları listeler: ad, tam yol, boyut ve durum (iniyor, tamam, durdu, iptal, hata). İndirmeler sormadan İndirilenler klasörüne gider; inen dosyayı buradaki yoldan okuyup kullanabilirsin. hesap_id verilirse yalnızca o sekmenin indirmeleri.',
+      sema: nesne({ hesap_id: yazi('İsteğe bağlı: yalnızca bu sekmenin indirmeleri') }),
+      calistir: async (g) => ops.indirmeler(g.hesap_id ? String(g.hesap_id) : ''),
     },
     tarayici_git: {
       aciklama: 'Açık tarayıcıda bir adrese gider.',
