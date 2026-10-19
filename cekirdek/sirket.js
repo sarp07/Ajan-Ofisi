@@ -268,8 +268,9 @@ function projeNormalle(p, kimlikler, sefSablon) {
     portBlok: Number.isInteger(ham.portBlok) && ham.portBlok > 0 && ham.portBlok < 600 ? ham.portBlok : 0,
     portlar: Object.fromEntries(
       Object.entries(ham.portlar && typeof ham.portlar === 'object' ? ham.portlar : {})
-        .filter(([k, v]) => /^[\w.-]{1,40}$/.test(k) && Number.isInteger(v) && v > 1024 && v < 65536)
-        .slice(0, 50)
+        .filter(([k, v]) => /^[\w.-]{1,40}$/.test(k) && k !== 'undefined' && Number.isInteger(v) && v > 1024 && v < 65536)
+        // katın port bloğu 100 port: kayıt sınırı da o kadar (eskiden 50'de kesiliyordu, yeni kayıt atılıp aynı port iki ada veriliyordu)
+        .slice(0, 100)
     ),
     // Servisler: katın compose dosyası, düşerse kendiliğinden kaldırılsın mı, kap başına bellek (MB) ve CPU sınırı
     servis: (() => {

@@ -47,6 +47,21 @@ export function blokSec(projeler) {
   return k;
 }
 
+// Blok dolduysa: o an kullanılmayan (dinlemeyen) eski kayıtlar boşaltılır, çalışan servislerin portu kalır.
+// Döner: yeni kayıt listesi
+export async function portlariTemizle(blok, ayrilan, sinir = BLOK - 1) {
+  const girdiler = Object.entries(ayrilan || {});
+  if (girdiler.length < sinir) return ayrilan || {};
+  const { bas, son } = portAraligi(blok);
+  const kalan = {};
+  for (const [ad, port] of girdiler) {
+    // bloğun dışında kalmış kayıt atılır; içindekilerden yalnızca dinleyenler tutulur
+    if (port < bas || port > son) continue;
+    if (!(await portBosMu(port))) kalan[ad] = port;
+  }
+  return kalan;
+}
+
 // Bloktan boş bir port: önce kayıtlı olmayan, sonra gerçekten boş olan
 export async function portSec(blok, ayrilan) {
   const { bas, son } = portAraligi(blok);
@@ -198,9 +213,13 @@ export function ortakAraclari(ops) {
       calistir: async (g) => (g.islem === 'liste' ? ops.testListesi() : ops.testDb(String(g.ad || 'test'), g.islem === 'sil' ? 'sil' : 'ac')),
     },
     port_ayir: {
-      aciklama: 'Katın port bloğundan bu servis için kalıcı ve boş bir port ayırır (ör. api, web, worker). Aynı ad için hep aynı port döner. 3000, 5173, 8080 gibi sabit portlar yerine bunu kullan.',
+      aciklama: 'Katın port bloğundan bu servis için kalıcı ve boş bir port ayırır (ör. api, web, worker). Aynı ad için hep aynı port döner; her denemede yeni ad uydurma, servisin kalıcı adını kullan (api, web, metro). 3000, 5173, 8080 gibi sabit portlar yerine bunu kullan.',
       sema: nesne({ ad: yazi('Servisin adı, ör. api, web') }, ['ad']),
-      calistir: async (g) => ops.portAyir(String(g.ad)),
+      calistir: async (g) => {
+        const ad = String(g.ad || '').trim();
+        if (!/^[\w.-]{1,40}$/.test(ad)) throw new Error('Servis adı gerekli: harf, rakam, nokta, tire ya da alt çizgi (ör. api, web).');
+        return ops.portAyir(ad);
+      },
     },
     portlar: {
       aciklama: 'Katın port bloğunu ve ayrılmış portları listeler.',

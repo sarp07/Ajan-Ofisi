@@ -39,7 +39,7 @@ import { TelegramBotu } from './cekirdek/telegram.js';
 import { onayKomutu } from './cekirdek/onay-komutu.js';
 import { altAjanIzle, altAjanKarari, retCevabi } from './cekirdek/sinir.js';
 import { Servisler, servisAraclari, SERVIS_ARAC_ADLARI, composeBul } from './cekirdek/servisler.js';
-import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portAraligi, sqlAd } from './cekirdek/ortak.js';
+import { OrtakPostgres, ortakAraclari, ORTAK_ARAC_ADLARI, blokSec, portSec, portlariTemizle, portAraligi, sqlAd } from './cekirdek/ortak.js';
 import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
@@ -1381,15 +1381,23 @@ function ortakIslemleri(projeId) {
       return ortakPg.testDb(proje(), ad, islem, sifreAl());
     },
     testListesi: () => ortakPg.testListesi(proje()),
-    portAyir: async (ad) => {
+    // Aynı anda gelen istekler sıraya girer: iki ajan aynı anda port isteyince ikisine aynı boş port verilmesin
+    portAyir: (ad) => {
       const p = proje();
-      const k = blok();
-      const guncel = depo.proje(p.id);
-      if (guncel.portlar[ad]) return { ad, port: guncel.portlar[ad], aralik: portAraligi(k) };
-      const port = await portSec(k, guncel.portlar);
-      depo.projeKaydet({ id: p.id, portlar: { ...guncel.portlar, [ad]: port } });
-      gonder('servisler', {});
-      return { ad, port, aralik: portAraligi(k) };
+      const sira = (portKilidi.get(p.id) || Promise.resolve()).then(async () => {
+        const k = blok();
+        const guncel = depo.proje(p.id);
+        if (guncel.portlar[ad]) return { ad, port: guncel.portlar[ad], aralik: portAraligi(k) };
+        // kayıt dolduysa kullanılmayan eski kayıtlar boşaltılır
+        const ayrilan = await portlariTemizle(k, guncel.portlar);
+        const port = await portSec(k, ayrilan);
+        depo.projeKaydet({ id: p.id, portlar: { ...ayrilan, [ad]: port } });
+        if (depo.proje(p.id).portlar[ad] !== port) throw new Error('Port kaydedilemedi, yeniden dene.');
+        gonder('servisler', {});
+        return { ad, port, aralik: portAraligi(k) };
+      });
+      portKilidi.set(p.id, sira.catch(() => {}));
+      return sira;
     },
     portlar: () => {
       const k = blok();
@@ -1397,6 +1405,9 @@ function ortakIslemleri(projeId) {
     },
   };
 }
+
+// katın port isteklerinin sırası (kat kimliği → son istek)
+const portKilidi = new Map();
 
 // ---------- ortam değişkenleri (env) ----------
 // Her katın değerleri tek bir şifreli kayıtta durur; arayüze gizli değer yalnızca "göster" ile gider.

@@ -716,5 +716,21 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.equal(k2.adi('+90 542 490 18 12'), 'Sü');
 }
 
+// Port kaydı: 50'de kesilmez (aynı port iki ada verilmesin), dolunca yalnızca kullanılmayanlar boşaltılır
+{
+  const { portlariTemizle } = await import('../cekirdek/ortak.js');
+  const net = await import('node:net');
+  const p = normalle({ projeler: [{ klasor: tmp, ad: 'x', portBlok: 9, portlar: Object.fromEntries([...Array(80)].map((_, i) => ['s' + i, 4900 + i]).concat([['undefined', 4999]])) }] }).projeler[0];
+  assert.equal(Object.keys(p.portlar).length, 80, '50 ile kesilmez');
+  assert.ok(!('undefined' in p.portlar), 'isimsiz kayıt atılır');
+  const dolu = Object.fromEntries([...Array(99)].map((_, i) => ['s' + i, 4900 + i]));
+  const sunucu = net.createServer().listen(4905, '127.0.0.1');
+  await new Promise((r) => sunucu.once('listening', r));
+  const kalan = await portlariTemizle(9, dolu);
+  sunucu.close();
+  assert.deepEqual(kalan, { s5: 4905 }, 'yalnızca çalışan servisin portu kalır');
+  assert.deepEqual(await portlariTemizle(9, { a: 4900 }), { a: 4900 }, 'dolmadıysa dokunulmaz');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');
