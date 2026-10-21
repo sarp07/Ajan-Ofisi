@@ -99,6 +99,8 @@ contextBridge.exposeInMainWorld('ofis', {
   simKaydir: cagri('sim:kaydir'),
   simYaz: cagri('sim:yaz'),
   simTus: cagri('sim:tus'),
+  simYapistir: cagri('sim:yapistir'),
+  simKisayol: cagri('sim:kisayol'),
   simUygulamalar: cagri('sim:uygulamalar'),
   simBaslat: cagri('sim:baslat'),
   simDigerleriniKapat: cagri('sim:digerleriniKapat'),

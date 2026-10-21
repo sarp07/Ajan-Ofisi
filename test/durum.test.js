@@ -732,5 +732,16 @@ assert.equal(olaydanKayit({ hook_event_name: 'UserPromptSubmit', prompt: '<paste
   assert.deepEqual(await portlariTemizle(9, { a: 4900 }), { a: 4900 }, 'dolmadıysa dokunulmaz');
 }
 
+// Simülatör klavyesi: düz yazı AXe ile, Türkçe harf ve emoji pano üzerinden; AXe'ye Xcode 27 beklemesi verilir
+{
+  const { duzYazi, KLAVYE, Simulator } = await import('../cekirdek/simulator.js');
+  assert.ok(duzYazi('Merhaba 123 -x') && !duzYazi('çğış') && !duzYazi('😀'));
+  assert.equal(KLAVYE.sil[0], 42);
+  assert.equal(KLAVYE.enter[0], 40);
+  const sim = new Simulator({ axe: '/yok', env: { PATH: '/usr/bin' } });
+  assert.equal(sim.axeOrtami().AXE_HID_STABILIZATION_MS, '300', 'ilk hareket düşmesin');
+  assert.equal(new Simulator({ axe: '/yok', env: { AXE_HID_STABILIZATION_MS: '500' } }).axeOrtami().AXE_HID_STABILIZATION_MS, '500');
+}
+
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('tüm kontroller geçti');

@@ -10,6 +10,26 @@ import { adbBul } from './test-alani.js';
 
 const MAC = process.platform === 'darwin';
 
+// Klavye tuşları: iOS'ta HID kodu (AXe), Android'de keyevent adı
+export const KLAVYE = {
+  enter: [40, 'KEYCODE_ENTER'],
+  sil: [42, 'KEYCODE_DEL'],
+  ileriSil: [76, 'KEYCODE_FORWARD_DEL'],
+  tab: [43, 'KEYCODE_TAB'],
+  esc: [41, 'KEYCODE_ESCAPE'],
+  bosluk: [44, 'KEYCODE_SPACE'],
+  sag: [79, 'KEYCODE_DPAD_RIGHT'],
+  sol: [80, 'KEYCODE_DPAD_LEFT'],
+  asagi: [81, 'KEYCODE_DPAD_DOWN'],
+  yukari: [82, 'KEYCODE_DPAD_UP'],
+};
+// Cmd ile kısayollar (iOS HID kodu, Android keyevent adı)
+const KISAYOL = { a: [4, 'KEYCODE_A'], c: [6, 'KEYCODE_C'], v: [25, 'KEYCODE_V'], x: [27, 'KEYCODE_X'], z: [29, 'KEYCODE_Z'] };
+// iOS'un "yapıştırmaya izin ver" sorusunun düğmesi (simülatörün diline göre)
+const YAPISTIR_IZNI = ['Allow Paste', 'Yapıştırmaya İzin Ver', 'Yapıştırmaya izin ver'];
+// AXe'nin klavyeyle doğrudan yazabildiği karakterler; dışındakiler (ğ, ş, emoji…) pano üzerinden yapıştırılır
+export const duzYazi = (m) => /^[\x20-\x7e\n\t]*$/.test(String(m || ''));
+
 export class Simulator {
   // axe: gömülü AXe programının yolu. env: kabuk ortamı. kare(udid, jpegBuffer): canlı görüntünün her karesi.
   constructor({ axe, env, kare }) {
@@ -32,9 +52,15 @@ export class Simulator {
     }
   }
 
+  // Xcode 27'de kısa ömürlü AXe süreçlerinin ilk hareketi düşüyor (dokunma "başarılı" deyip cihaza ulaşmıyor).
+  // Bağlantı kurulduktan sonra kısa bir bekleme bunu önler: github.com/cameroncooke/AXe/issues/71
+  axeOrtami() {
+    return { ...this.env, AXE_HID_STABILIZATION_MS: (this.env && this.env.AXE_HID_STABILIZATION_MS) || '300' };
+  }
+
   async axeCalis(arg, zamanAsimi = 30000, girdi) {
     if (!this.axeVar()) throw new Error('Simülatör denetim aracı (AXe) bulunamadı.');
-    const s = await calistir(this.axe, arg, { env: this.env, zamanAsimi, girdi });
+    const s = await calistir(this.axe, arg, { env: this.axeOrtami(), zamanAsimi, girdi });
     if (s.kod !== 0) throw new Error((s.hata || s.cikti).trim().split('\n').slice(-2).join(' ') || 'AXe hatası');
     return s.cikti;
   }
@@ -166,14 +192,60 @@ export class Simulator {
   async yaz(kimlik, metin) {
     const m = String(metin || '');
     if (!m) return '';
-    // metin "-" ile başlasa bile bayrak sanılmasın: standart girdiden verilir
-    if (Simulator.ios(kimlik)) return this.axeCalis(['type', '--stdin', '--udid', kimlik], 60000, m);
+    if (Simulator.ios(kimlik)) {
+      // Türkçe harfler ve emoji klavyeyle yazılamaz: simülatörün panosuna konup yapıştırılır
+      if (!duzYazi(m)) return this.yapistir(kimlik, m);
+      // metin "-" ile başlasa bile bayrak sanılmasın: standart girdiden verilir
+      return this.axeCalis(['type', '--stdin', '--udid', kimlik], 60000, m);
+    }
     // adb input text boşlukları %s ister, özel karakterler kaçırılır
     return this.adbCalis(['-s', kimlik, 'shell', 'input', 'text', m.replace(/([\\'"`$&|;<>()])/g, '\\$1').replace(/ /g, '%s')]);
   }
 
-  // Donanım tuşu: ana ekran, kilit, ses; Android'de geri de vardır
+  // ---------- pano ----------
+  // Simülatörün panosu Mac'ten okunur ve yazılır (xcrun simctl); Android'de yalnızca yazı olarak gönderilir
+  async panoyaYaz(kimlik, metin) {
+    const s = await calistir('xcrun', ['simctl', 'pbcopy', kimlik], { env: this.env, girdi: String(metin), zamanAsimi: 15000 });
+    if (s.kod !== 0) throw new Error((s.hata || s.cikti).trim().split('\n').pop() || 'Panoya yazılamadı');
+  }
+
+  async panodanOku(kimlik) {
+    if (!Simulator.ios(kimlik)) return '';
+    const s = await calistir('xcrun', ['simctl', 'pbpaste', kimlik], { env: this.env, zamanAsimi: 15000 });
+    return s.kod === 0 ? s.cikti : '';
+  }
+
+  // Metni odaktaki alana yapıştırır (iOS: panoya koyup Cmd+V; Android: yazı olarak)
+  async yapistir(kimlik, metin) {
+    const m = String(metin || '');
+    if (!m) return '';
+    if (!Simulator.ios(kimlik)) return this.yaz(kimlik, m);
+    await this.panoyaYaz(kimlik, m);
+    await this.kisayol(kimlik, 'v');
+    // iOS başka kaynaktan yapıştırmada izin sorar; sahibin başlattığı yapıştırma olduğu için soru kendiliğinden onaylanır
+    for (const etiket of YAPISTIR_IZNI) {
+      try {
+        await this.axeCalis(['tap', '--label', etiket, '--udid', kimlik, '--wait-timeout', '1.2'], 8000);
+        break;
+      } catch {
+        /* soru çıkmadı ya da başka dilde */
+      }
+    }
+    return '';
+  }
+
+  // Cmd (Android'de Ctrl) ile kısayol: a tümünü seç, c kopyala, x kes, v yapıştır, z geri al
+  async kisayol(kimlik, harf) {
+    const k = KISAYOL[String(harf).toLowerCase()];
+    if (!k) throw new Error('Bilinmeyen kısayol: ' + harf);
+    if (Simulator.ios(kimlik)) return this.axeCalis(['key-combo', '--modifiers', '227', '--key', String(k[0]), '--udid', kimlik]);
+    return this.adbCalis(['-s', kimlik, 'shell', 'input', 'keycombination', 'KEYCODE_CTRL_LEFT', k[1]]);
+  }
+
+  // Donanım tuşu (ana ekran, kilit, ses; Android'de geri) ya da klavye tuşu (enter, sil, tab, oklar…)
   async tus(kimlik, tus) {
+    const kl = KLAVYE[tus];
+    if (kl) return Simulator.ios(kimlik) ? this.axeCalis(['key', String(kl[0]), '--udid', kimlik]) : this.adbCalis(['-s', kimlik, 'shell', 'input', 'keyevent', kl[1]]);
     if (Simulator.ios(kimlik)) {
       const ad = { anaEkran: 'home', kilit: 'lock', siri: 'siri', yan: 'side-button', applePay: 'apple-pay' }[tus] || tus;
       return this.axeCalis(['button', ad, '--udid', kimlik]);
@@ -248,14 +320,19 @@ export function cihazAraclari(sim) {
       calistir: async (g) => (await sim.kaydir(String(g.cihaz), { x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2, sure: g.sure || 0.3 }), 'Kaydırıldı.'),
     },
     cihaz_yaz: {
-      aciklama: 'Odaktaki alana yazı yazar (önce alana dokun).',
+      aciklama: 'Odaktaki alana yazı yazar (önce alana dokun). Türkçe harfler ve emoji de olur (pano üzerinden yapıştırılır).',
       sema: nesne({ cihaz: cihazAlani, metin: yazi('Yazılacak metin') }, ['cihaz', 'metin']),
       calistir: async (g) => (await sim.yaz(String(g.cihaz), String(g.metin)), 'Yazıldı.'),
     },
     cihaz_tus: {
-      aciklama: 'Donanım tuşu: anaEkran, kilit; Android\'de ayrıca geri, uygulamalar, enter, sil.',
-      sema: nesne({ cihaz: cihazAlani, tus: { type: 'string', enum: ['anaEkran', 'kilit', 'geri', 'uygulamalar', 'enter', 'sil'] } }, ['cihaz', 'tus']),
-      calistir: async (g) => (await sim.tus(String(g.cihaz), String(g.tus)), 'Basıldı.'),
+      aciklama: 'Tuşa basar. Donanım: anaEkran, kilit (Android\'de ayrıca geri, uygulamalar). Klavye: enter, sil (geri silme), ileriSil, tab, esc, bosluk, sag, sol, asagi, yukari. Kısayol: kisayol_a (tümünü seç), kisayol_c (kopyala), kisayol_x (kes), kisayol_v (yapıştır), kisayol_z (geri al).',
+      sema: nesne({ cihaz: cihazAlani, tus: { type: 'string', enum: ['anaEkran', 'kilit', 'geri', 'uygulamalar', ...Object.keys(KLAVYE), 'kisayol_a', 'kisayol_c', 'kisayol_x', 'kisayol_v', 'kisayol_z'] } }, ['cihaz', 'tus']),
+      calistir: async (g) => {
+        const t = String(g.tus);
+        if (t.startsWith('kisayol_')) await sim.kisayol(String(g.cihaz), t.slice(8));
+        else await sim.tus(String(g.cihaz), t);
+        return 'Basıldı.';
+      },
     },
     ios_uygulamalar: {
       aciklama: 'iOS simülatöründe yüklü uygulamaları paket kimliği ve URL şemalarıyla listeler. Projenin uygulamasını açmak için ios_baslat ile paket kimliğini kullan; web adresini Safari\'de açma.',

@@ -1,5 +1,5 @@
 // Ajan Ofisi ana süreç: pencere, şirket verisi, gömülü Claude Code oturumu, canlı olay alıcısı.
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen, net, crashReporter } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, nativeImage, shell, Notification, safeStorage, session, screen, net, crashReporter, clipboard } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -2923,6 +2923,21 @@ function ipcKur() {
   h('sim:kaydir', testIs((kimlik, x1, y1, x2, y2) => simulator.kaydir(String(kimlik), { x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2), oran: true, sure: 0.25 })));
   h('sim:yaz', testIs((kimlik, metin) => simulator.yaz(String(kimlik), String(metin || ''))));
   h('sim:tus', testIs((kimlik, tus) => simulator.tus(String(kimlik), String(tus))));
+  // Mac panosu ile cihaz arasında: Cmd+V yapıştırır, Cmd+C/X cihazda kopyalayıp Mac panosuna alır, Cmd+A/Z cihazda çalışır
+  h('sim:yapistir', testIs((kimlik) => simulator.yapistir(String(kimlik), clipboard.readText())));
+  h(
+    'sim:kisayol',
+    testIs(async (kimlik, harf) => {
+      const k = String(kimlik);
+      const hf = String(harf).toLowerCase();
+      await simulator.kisayol(k, hf);
+      if (hf !== 'c' && hf !== 'x') return { tamam: true };
+      await new Promise((r) => setTimeout(r, 350));
+      const metin = await simulator.panodanOku(k);
+      if (metin) clipboard.writeText(metin);
+      return { tamam: true, metin: metin.slice(0, 200) };
+    })
+  );
   h('sim:uygulamalar', testIs((udid) => simulator.uygulamalar(String(udid))));
   h('sim:baslat', testIs(async (udid, paket) => {
     const r = await calistir('/usr/bin/xcrun', ['simctl', 'launch', String(udid), String(paket)], { env: ortam, zamanAsimi: 30000 });

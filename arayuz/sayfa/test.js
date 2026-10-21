@@ -16,7 +16,9 @@ export function testSayfasi({ git } = {}) {
 
   // canlı ekran: öğe bir kez kurulur, kareler yalnızca kaynağını değiştirir
   const ekran = h('img', { class: 'simEkran', alt: '', draggable: 'false' });
-  const ekranKap = h('div', { class: 'simCerceve' }, ekran);
+  // ekrana tıklayınca klavye cihaza bağlanır: yazılanlar, silme, Enter, oklar ve Cmd kısayolları doğrudan cihaza gider
+  const klavyeNot = h('div', { class: 'simKlavyeNot' });
+  const ekranKap = h('div', { class: 'simCerceve', tabindex: '0', 'aria-label': 'Cihaz ekranı' }, ekran, klavyeNot);
   let sonKare = 0;
   api.simKareDinle((k) => {
     if (k.kimlik !== secili || !gorunur) return;
@@ -33,6 +35,7 @@ export function testSayfasi({ git } = {}) {
   };
   ekran.addEventListener('pointerdown', (e) => {
     if (!secili) return;
+    ekranKap.focus({ preventScroll: true });
     basla = { o: oran(e), z: Date.now() };
     ekran.setPointerCapture(e.pointerId);
   });
@@ -45,6 +48,97 @@ export function testSayfasi({ git } = {}) {
     const r = Math.hypot(x2 - x1, y2 - y1) > 0.02 ? await api.simKaydir(secili, x1, y1, x2, y2) : await api.simDokun(secili, x2, y2);
     if (r && r.hata) bildir(r.ayrinti || hataMetni(r), true);
   });
+
+  // ---------- klavye ----------
+  // İşlemler sırayla gider (yazı, silme, Enter karışmasın); art arda yazılan harfler tek seferde gönderilir
+  let sira = Promise.resolve();
+  const sirala = (fn) => {
+    sira = sira.then(fn).then((r) => r && r.hata && bildir(r.ayrinti || hataMetni(r), true)).catch(() => {});
+    return sira;
+  };
+  // önceki işlem sürerken yazılan harfler birikir ve sırası gelince tek seferde gider (her harf ayrı komut olmaz)
+  let tampon = '';
+  let tamponZ = null;
+  let yaziSirada = false;
+  const tamponuGonder = () => {
+    clearTimeout(tamponZ);
+    if (!tampon || !secili || yaziSirada) return;
+    yaziSirada = true;
+    const k = secili;
+    sirala(() => {
+      yaziSirada = false;
+      const m = tampon;
+      tampon = '';
+      return m ? api.simYaz(k, m) : null;
+    });
+  };
+  const TUSLAR = { Enter: 'enter', Backspace: 'sil', Delete: 'ileriSil', Tab: 'tab', Escape: 'esc', ArrowRight: 'sag', ArrowLeft: 'sol', ArrowDown: 'asagi', ArrowUp: 'yukari' };
+  ekranKap.addEventListener('keydown', (e) => {
+    if (!secili || e.isComposing) return;
+    const k = secili;
+    const kisa = (api.mac ? e.metaKey : e.ctrlKey) && !e.altKey;
+    if (kisa && /^[acvxz]$/i.test(e.key)) {
+      e.preventDefault();
+      tamponuGonder();
+      const harf = e.key.toLowerCase();
+      if (harf === 'v') return sirala(() => api.simYapistir(k));
+      return sirala(async () => {
+        const r = await api.simKisayol(k, harf);
+        if (r && r.tamam && r.sonuc && r.sonuc.metin) bildir(depo.t('sim.kopyalandi'));
+        return r;
+      });
+    }
+    if (kisa || e.altKey) return;
+    if (TUSLAR[e.key]) {
+      e.preventDefault();
+      tamponuGonder();
+      return sirala(() => api.simTus(k, TUSLAR[e.key]));
+    }
+    if ([...e.key].length === 1) {
+      e.preventDefault();
+      tampon += e.key;
+      clearTimeout(tamponZ);
+      tamponZ = setTimeout(tamponuGonder, 90);
+    }
+  });
+  // Mac panosundan yapıştırma (sağ tık menüsünden de)
+  ekranKap.addEventListener('paste', (e) => {
+    if (!secili) return;
+    e.preventDefault();
+    tamponuGonder();
+    const k = secili;
+    sirala(() => api.simYapistir(k));
+  });
+  const klavyeNotCiz = () => {
+    const odakta = document.activeElement === ekranKap;
+    ekranKap.classList.toggle('klavyede', odakta);
+    klavyeNot.textContent = depo.t(odakta ? 'sim.klavyeAcik' : 'sim.klavyeKapali');
+  };
+  ekranKap.addEventListener('focus', klavyeNotCiz);
+  ekranKap.addEventListener('blur', () => (tamponuGonder(), klavyeNotCiz()));
+
+  // fare tekerleği ve trackpad: kaydırma (toplanır, kısa bir duraklamada tek kaydırma olarak gider)
+  let tekerlek = 0;
+  let tekerlekZ = null;
+  ekranKap.addEventListener(
+    'wheel',
+    (e) => {
+      if (!secili) return;
+      e.preventDefault();
+      tekerlek += e.deltaY;
+      clearTimeout(tekerlekZ);
+      tekerlekZ = setTimeout(() => {
+        const r = ekran.getBoundingClientRect();
+        const pay = Math.max(-0.4, Math.min(0.4, tekerlek / Math.max(200, r.height * 1.4)));
+        tekerlek = 0;
+        if (Math.abs(pay) < 0.02) return;
+        const k = secili;
+        // aşağı kaydırmak parmağı yukarı sürüklemektir
+        sirala(() => api.simKaydir(k, 0.5, 0.5 + pay / 2, 0.5, 0.5 - pay / 2));
+      }, 120);
+    },
+    { passive: false }
+  );
 
   async function yenile() {
     yukleniyor = true;
@@ -174,7 +268,7 @@ export function testSayfasi({ git } = {}) {
       { class: 'panel simCanli' },
       h('header', { class: 'servisKatBas' }, h('div', null, h('h2', null, c.ad), h('p', { class: 'ipucu' }, c.alt + ' · ' + t('sim.ipucu'))), dugme('sef', 'oynat', t('test.sefeVer'), () => sefeVer(`${c.ad} (${c.alt})${c.ios ? ' iOS simülatörü' : ' Android cihazı'}`), 'ana')),
       durum.platform === 'darwin' && c.ios && !durum.axe ? h('p', { class: 'durumSatir kotu' }, ikon('ucgen', 15), t('sim.axeYok')) : null,
-      ekranKap,
+      (klavyeNotCiz(), ekranKap),
       h(
         'div',
         { class: 'simAraclar' },
