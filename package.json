@@ -1,13 +1,13 @@
 {
   "name": "ajan-ofis",
   "productName": "Ajan Ofisi",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "Claude Code ekibini canlı bir ofis olarak gösteren ve yöneten masaüstü uygulaması",
   "type": "module",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "node test/durum.test.js && node test/metin.test.js",
+    "test": "node test/durum.test.js && node test/metin.test.js && node test/harita.test.js",
     "paket": "electron-builder --publish never",
     "paket:mac": "electron-builder --mac --publish never",
     "paket:win": "electron-builder --win --publish never -c.npmRebuild=false",

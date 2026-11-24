@@ -44,6 +44,7 @@ import { ozelAraclari, OZEL_ARAC_ADLARI } from './cekirdek/ozel-araclari.js';
 import { BeyinNotlari, beyinNotAraclari, BEYIN_NOT_ARAC_ADLARI } from './cekirdek/beyin-notlar.js';
 import { EK_MOTORLAR, ekBul, ekDerle, ekArgumanlari, geminiUyarla, kimiUyarla } from './cekirdek/ek-motorlar.js';
 import { playwrightKur, playwrightOrtami, PLAYWRIGHT_PAKET } from './cekirdek/playwright.js';
+import { graphifyKur, graphifyYolu, KodHaritasi, haritaAraclari, HARITA_ARAC_ADLARI, GRAPHIFY_PAKET } from './cekirdek/harita.js';
 import { tasarimListesi, yeniTasarim, tasarimYolu, tasarimKoku, gecerliTasarim, seciciEkle, tasarimMetni, tasarimPlani } from './cekirdek/tasarim.js';
 import { birimleriBul, birimDurumu, dosyalariYaz, envAyristir, veriDuzelt, varsayilanDosya, anahtarGecerli, gizliMi, ortamAraclari, ORTAM_ARAC_ADLARI } from './cekirdek/ortam.js';
 
@@ -346,6 +347,36 @@ function playwrightHazirla() {
     });
 }
 
+// Kod haritası (Graphify): ajanlar projeyi her seferinde baştan taramasın diye her katın kodu yerel bir grafiğe çevrilir
+const kodHaritasi = new KodHaritasi({ yol: () => (ortam ? graphifyYolu(ortam, araclarKlasoru()) : null), env: () => ortam || process.env, gunluk: (...p) => gunluk(...p) });
+let haritaKurulumu = null;
+function haritaHazirla() {
+  if (haritaKurulumu || SINAMA || !ortamHazir) return;
+  haritaKurulumu = graphifyKur(ortam, araclarKlasoru())
+    .then((d) => {
+      if (d === 'kuruldu') gunluk('harita', 'graphify kuruldu', GRAPHIFY_PAKET);
+      // kurulumdan önce açılmış katların haritası şimdi çıkarılır
+      for (const [id, k] of katlar) if (k.oturum && k.oturum.acik && depo.proje(id)) katHaritasiniGuncelle(id, 1000);
+    })
+    .catch((e) => {
+      gunluk('harita', 'graphify kurulamadı', String(e.message || e));
+      setTimeout(() => (haritaKurulumu = null), 3600000);
+    });
+}
+// Katın bütün depolarının haritasını (art arda gelen istekleri toplayarak) yeniler
+function katHaritasiniGuncelle(projeId, gecikme) {
+  const p = depo && depo.proje(projeId);
+  if (!p || p.tur === 'kisisel' || !p.klasor) return;
+  for (const d of projeDepolari(p)) kodHaritasi.guncelle(path.resolve(d.klasor), gecikme);
+}
+// Kodu değiştiren araçlar: iş bitene kadar haritayı uzun aralıkla, iş bitince hemen yenile
+const DUZENLEYEN_ARACLAR = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch', 'write_file', 'replace', 'edit_file', 'str_replace_based_edit_tool']);
+function haritaOlayi(projeId, ev) {
+  const ad = ev && ev.hook_event_name;
+  if (ad === 'Stop' || ad === 'SubagentStop') katHaritasiniGuncelle(projeId, 3000);
+  else if (ad === 'PostToolUse' && DUZENLEYEN_ARACLAR.has(ev.tool_name)) katHaritasiniGuncelle(projeId, 30000);
+}
+
 function codexModelCoz() {
   const v = codexVarsayilan(codexListe);
   const m = depo.veri.modeller.codex;
@@ -480,6 +511,7 @@ function olayGeldi(ev, etiket = '') {
   olaydanBildir(ev, kat);
   if (sohbetIsle(k.sohbet, codexUyarla(ev), kat)) sohbetGonder(k);
   if (b.projeId) beyneIlet(k, ev, kat);
+  if (b.projeId) haritaOlayi(b.projeId, codexUyarla(ev));
   // alt ajan sınırı: her çalışan en fazla bir yardımcı, takım dışı yardımcılar ekip sayısı kadar
   let karar = null;
   if (b.projeId) {
@@ -585,6 +617,7 @@ async function oturumBaslat({ projeId, surdur, sutun, satir }) {
     return { hata: 'baslatma', ayrinti: String(e.message || e) };
   }
   ortamTazele(proje.id);
+  katHaritasiniGuncelle(proje.id, 2000);
   depo.projeKaydet(motor === 'claude' ? { id: proje.id, sonOturum: oturumId, sonMotor: 'claude', sonAcilis: Date.now() } : { id: proje.id, sonAcilis: Date.now() });
   depo.guncelle({ sonProje: proje.id });
   gonder('sirket', gorunum());
@@ -2058,8 +2091,10 @@ function ozelMcpAraclari(anahtar) {
 function mcpAraclari(kapsam) {
   if (ozelCoz(kapsam)) return ozelMcpAraclari(kapsam);
   if (!kapsam) return { ...beyinAraclari(beyinIslemleri), ...beyinNotAraclari(beyinNotlari, beyinNotOlayi('beyin')), ...tarayiciAraclari(tarayiciIslemleri('beyin')), ...servisAraclari(servisler, servisProjesi, { beyin: true }), ...githubAraclari(depoOrtami, (soru) => sahipOnayi('beyin', soru), { beyin: true }) };
-  if (!depo.proje(kapsam)) return {};
-  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...beyinNotAraclari(beyinNotlari, beyinNotOlayi(kapsam)), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
+  const kat = depo.proje(kapsam);
+  if (!kat) return {};
+  const haritaDepolari = () => (kat.tur === 'kisisel' || !kat.klasor ? [] : projeDepolari(depo.proje(kapsam) || kat).map((d) => ({ ad: d.ad, klasor: path.resolve(d.klasor) })));
+  return { ...tarayiciAraclari(tarayiciIslemleri(kapsam)), ...beyinNotAraclari(beyinNotlari, beyinNotOlayi(kapsam)), ...haritaAraclari({ depolar: haritaDepolari, harita: kodHaritasi }), ...testAraclari({ env: ortam }), ...cihazAraclari(simulator), ...servisAraclari(servisler, () => servisProjesi(kapsam)), ...ortakAraclari(ortakIslemleri(kapsam)), ...ortamAraclari(ortamIslemleri(kapsam)), ...githubAraclari((_kat, depoAdi) => depoOrtami(kapsam, depoAdi), (soru) => sahipOnayi(kapsam, soru)) };
 }
 
 // Motorlara verilecek MCP bağlantı bayrakları. Onaylı araçlar (tıkla, yaz) her seferinde motorun onay penceresinden geçer.
@@ -2071,13 +2106,13 @@ const TEST_TARAYICI_KOMUTLARI = ['playwright-cli', 'npx playwright', 'npx @playw
 // Sormadan çalışabilen ofis araçları (motorların izin listelerine girer)
 function serbestAraclar({ beyin, ozel }) {
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  return ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  return ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...(beyin ? [] : HARITA_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
 }
 
 function mcpBayraklari(motor, { adres, hedef, beyin, ozel }) {
   // sahip tarayıcı onayını kapattıysa tıklama ve yazma da serbesttir
   const onaysiz = !!depo.veri.tarayiciOnaysiz;
-  const serbest = ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
+  const serbest = ozel ? [...OZEL_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])] : [...BEYIN_NOT_ARAC_ADLARI, ...(beyin ? Object.keys(beyinAraclari(beyinIslemleri)) : [...TEST_ARAC_ADLARI, ...CIHAZ_ARAC_ADLARI]), ...SERVIS_ARAC_ADLARI, ...(beyin ? [] : ORTAK_ARAC_ADLARI), ...(beyin ? [] : ORTAM_ARAC_ADLARI), ...(beyin ? [] : HARITA_ARAC_ADLARI), ...GITHUB_ARAC_ADLARI, ...ONAYSIZ_ARACLAR, ...(onaysiz ? ONAYLI_ARACLAR : [])];
   if (motor === 'claude') {
     const dosya = path.join(hedef, 'mcp.json');
     fs.mkdirSync(hedef, { recursive: true });
@@ -3223,6 +3258,7 @@ async function baglantiIzle() {
   if (cevrimici) {
     onerilenSkilleriKur();
     playwrightHazirla();
+    haritaHazirla();
   }
   setTimeout(baglantiIzle, cevrimici ? 10000 : 3000);
 }

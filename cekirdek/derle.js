@@ -69,6 +69,8 @@ const M = {
     githubKurali: 'Dal, PR ve depo işleri için github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat ve github_depo araçlarını kullan. İş bitince kendi açtığın ve birleşen dalları sil. PR birleştirme ve depo ayarı değişikliği sahibin onayına gider; depo silme senin işin değildir.',
     surumler: 'Sürüm numaraları',
     surumKurali: 'Sürüm numarası ANA.KÜÇÜK.YAMA biçimindedir (anlamsal sürümleme). Yalnızca hata düzeltmesi: son rakam artar (1.1.0 → 1.1.1). Geriye uyumlu yeni özellik: orta rakam artar, son rakam sıfırlanır (1.1.1 → 1.2.0). Uyumu bozan büyük değişiklik: ilk rakam artar, diğerleri sıfırlanır (1.2.0 → 2.0.0). Rakamlar 9\'da devretmez, 1.0.9\'dan sonra 1.0.10 gelebilir. Mağaza uygulamalarında build numarası (iOS CFBundleVersion, Android versionCode) her yüklemede artar ve sürüm numarasından ayrıdır. Sürümü değiştirmeden önce hangi türde olduğunu ve nedenini sahibe söyle.',
+    haritaBaslik: 'Kod haritası',
+    haritaKurali: 'Bu katın kodu bir haritaya çıkarıldı ve dosya değiştikçe kendiliğinden güncelleniyor. Projeyi baştan tarama. Bir işe başlarken harita_ozet ile ana bölümlere bak. Bir pencerenin, sınıfın, fonksiyonun ya da dosyanın nerede olduğunu grep veya find ile değil harita_ara ile bul; bir değişikliğin neyi etkileyeceğini harita_komsular ile, iki parçanın nasıl bağlandığını harita_yol ile gör. Sonra yalnızca gereken dosyanın gereken satırlarını oku. Harita bir şeyi bulamazsa ya da henüz hazır değilse normal yoldan ara. İşi ekibe verirken ilgili dosya ve satırları da yaz ki ekip üyesi taramasın.',
     hafizaBaslik: 'Ortak hafıza',
     hafizaKurali: 'Şirketin kalıcı hafızası beyin klasörüdür. İşe başlamadan beyin_ara ile projeyle ilgili notlara bak. Önemli bir karar, öğrenilen bir ders ya da çözülen kalıcı bir hata olursa beyin_yaz ile tur proje ve projenin adıyla kısa bir not yaz; [[Başlık]] ile bağla. Gizli değer yazma.',
     ortamBaslik: 'Ortam değişkenleri (env)',
@@ -130,6 +132,8 @@ const M = {
     githubKurali: 'For branches, pull requests and repository work use the github_dallar, github_dal_sil, github_pr_ac, github_pr_birlestir, github_pr_kapat and github_depo tools. When work is done, delete the branches you opened that were merged. Merging a PR and changing repository settings go to the owner for approval; deleting a repository is never your job.',
     surumler: 'Version numbers',
     surumKurali: 'Version numbers are MAJOR.MINOR.PATCH (semantic versioning). Bug fixes only: the last number goes up (1.1.0 → 1.1.1). Backward compatible new features: the middle number goes up and the last resets (1.1.1 → 1.2.0). Big breaking changes: the first number goes up and the others reset (1.2.0 → 2.0.0). Numbers do not roll over at 9; 1.0.10 can follow 1.0.9. For store apps the build number (iOS CFBundleVersion, Android versionCode) goes up on every upload and is separate from the version. Before changing the version, tell the owner which kind it is and why.',
+    haritaBaslik: 'Code map',
+    haritaKurali: 'This floor\'s code has been turned into a map that updates itself as files change. Do not rescan the project. When you start a job, look at the main sections with harita_ozet. Find where a window, class, function or file lives with harita_ara, not grep or find; see what a change affects with harita_komsular and how two parts connect with harita_yol. Then read only the lines of the file you need. If the map cannot find something or is not ready yet, search the normal way. When you hand work to the team, include the relevant files and lines so the member does not have to scan.',
     hafizaBaslik: 'Shared memory',
     hafizaKurali: 'The company\'s permanent memory is the brain folder. Before starting, search it with beyin_ara for notes about the project. When an important decision is made, a lesson is learned or a lasting bug is solved, write a short note with beyin_yaz using tur proje and the project name; link with [[Title]]. Never write secret values.',
     ortamBaslik: 'Environment variables (env)',
@@ -180,6 +184,7 @@ export function projeMetni(sirket, proje, { tam = true } = {}) {
   b.push(`### ${m.skillOncelik}\n\n${m.skillOncelikKurali}`);
   b.push(`### ${m.ortakBaslik}\n\n${m.ortakKurali}`);
   b.push(`### ${m.ortamBaslik}\n\n${m.ortamKurali}`);
+  if (proje.tur !== 'kisisel' && proje.klasor) b.push(`### ${m.haritaBaslik}\n\n${m.haritaKurali}`);
   b.push(`### ${m.hafizaBaslik}\n\n${m.hafizaKurali}`);
   b.push(`### ${m.surecler}\n\n${m.surecKurali}`);
   b.push(`### ${m.surumler}\n\n${m.surumKurali}`);
